@@ -246,9 +246,17 @@ def _download(task_id, url, spec, mode):
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
         except Exception as e:
-            # 部分视频流含无时间戳数据包，mkv 封装器会失败；自动改用 mp4 容器重试（已下载的流会复用）
-            if mode == 'video' and 'Conversion failed' in str(e):
-                log(f'mkv 合并失败，自动改用 mp4 容器重试: {e}')
+            msg = str(e)
+            if 'HTTP Error 403' in msg:
+                # YouTube 风控拒绝当前客户端，换 tv 客户端重试（无需 PO token）
+                log(f'403 被拒，改用 tv 客户端重试: {msg[:150]}')
+                retry_opts = dict(opts)
+                retry_opts['extractor_args'] = {'youtube': {'player_client': ['tv']}}
+                with yt_dlp.YoutubeDL(retry_opts) as ydl:
+                    ydl.download([url])
+            elif mode == 'video' and 'Conversion failed' in msg:
+                # 部分视频流含无时间戳数据包，mkv 封装器会失败；自动改用 mp4 容器重试（已下载的流会复用）
+                log(f'mkv 合并失败，自动改用 mp4 容器重试: {msg[:150]}')
                 retry_opts = dict(opts, merge_output_format='mp4')
                 with yt_dlp.YoutubeDL(retry_opts) as ydl:
                     ydl.download([url])
