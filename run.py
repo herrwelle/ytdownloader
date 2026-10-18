@@ -1,6 +1,13 @@
 """原生 app 入口：本地起 FastAPI 服务（后台线程）→ pywebview 原生窗口展示界面。"""
+import io
 import os
 import sys
+
+# Windows --windowed 模式下 stdout/stderr 为 None，uvicorn 日志初始化会崩溃
+if sys.stdout is None:
+    sys.stdout = io.open(os.devnull, 'w', encoding='utf-8')
+if sys.stderr is None:
+    sys.stderr = io.open(os.devnull, 'w', encoding='utf-8')
 
 os.environ.setdefault('YTD_APP_MODE', 'native')
 
@@ -57,7 +64,7 @@ class NativeApi:
 def main():
     port = pick_port()
     server = uvicorn.Server(uvicorn.Config(
-        fastapi_app, host='127.0.0.1', port=port, log_level='warning'))
+        fastapi_app, host='127.0.0.1', port=port, log_level='warning', log_config=None))
     threading.Thread(target=server.run, daemon=True).start()
 
     import webview

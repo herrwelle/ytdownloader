@@ -12,3 +12,4 @@ bin-intel/
 .DS_Store
 assets/icon_1024.png
 assets/YTDownloader.iconset/
+dist-windows/

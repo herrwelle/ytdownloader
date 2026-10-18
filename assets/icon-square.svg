@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FF5C5C"/>
+      <stop offset="0.5" stop-color="#F02222"/>
+      <stop offset="1" stop-color="#D50000"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 全方形不透明背景，无透明角 -->
+  <rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"/>
+  <ellipse cx="512" cy="140" rx="760" ry="380" fill="#FFFFFF" opacity="0.10"/>
+
+  <!-- 下载箭头 -->
+  <path d="M512 276 L512 542" stroke="#FFFFFF" stroke-width="86" stroke-linecap="round" fill="none"/>
+  <path d="M374 472 L512 636 L650 472" stroke="#FFFFFF" stroke-width="86"
+        stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- 托盘 -->
+  <path d="M330 722 L330 740 Q330 800 390 800 L634 800 Q694 800 694 740 L694 722"
+        stroke="#FFFFFF" stroke-width="46" stroke-linecap="round" fill="none"/>
+</svg>
