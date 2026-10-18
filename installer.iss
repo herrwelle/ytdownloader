@@ -17,7 +17,7 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "Languages\ChineseSimplified.isl"
+Name: "chinesesimplified"; MessagesFile: "compiler:LanguagesUnofficial\ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]

@@ -414,12 +414,17 @@ async function doPaste(e) {
   e && e.stopPropagation();
   ctxMenu.style.display = 'none';
   const input = $('url');
+  let text = null;
   try {
-    const text = await navigator.clipboard.readText();
-    if (text) { input.value = text.trim(); input.focus(); }
-  } catch (err) {
-    input.focus();
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.read_clipboard) {
+      text = await window.pywebview.api.read_clipboard();
+    }
+  } catch (err) {}
+  if (!text) {
+    try { text = await navigator.clipboard.readText(); } catch (err) {}
   }
+  if (text) { input.value = text.trim(); input.focus(); }
+  else { input.focus(); }
 }
 function doClear() {
   ctxMenu.style.display = 'none';

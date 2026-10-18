@@ -242,8 +242,18 @@ def _download(task_id, url, spec, mode):
         }]
     try:
         log(f'开始下载: {url} | 格式: {spec} | 模式: {mode} | ffmpeg: {FFMPEG_LOCATION or "PATH"} | yt-dlp: {yt_dlp.version.__version__}')
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            ydl.download([url])
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                ydl.download([url])
+        except Exception as e:
+            # 部分视频流含无时间戳数据包，mkv 封装器会失败；自动改用 mp4 容器重试（已下载的流会复用）
+            if mode == 'video' and 'Conversion failed' in str(e):
+                log(f'mkv 合并失败，自动改用 mp4 容器重试: {e}')
+                retry_opts = dict(opts, merge_output_format='mp4')
+                with yt_dlp.YoutubeDL(retry_opts) as ydl:
+                    ydl.download([url])
+            else:
+                raise
         files = [x for x in os.listdir(outdir) if not x.startswith('.')]
         if not files:
             raise RuntimeError('下载完成但未找到输出文件')

@@ -1,5 +1,6 @@
 """原生 app 入口：本地起 FastAPI 服务（后台线程）→ pywebview 原生窗口展示界面。"""
 import os
+import sys
 
 os.environ.setdefault('YTD_APP_MODE', 'native')
 
@@ -22,6 +23,37 @@ def pick_port(start=8765):
     raise RuntimeError('没有可用端口')
 
 
+class NativeApi:
+    """暴露给 JS 的原生能力：读系统剪贴板（绕过 WKWebView 剪贴板权限限制）"""
+
+    def read_clipboard(self):
+        try:
+            if sys.platform == 'darwin':
+                from AppKit import NSPasteboard, NSPasteboardTypeString
+                pb = NSPasteboard.generalPasteboard()
+                return pb.stringForType_(NSPasteboardTypeString) or ''
+            elif os.name == 'nt':
+                import ctypes
+                k32 = ctypes.windll.kernel32
+                u32 = ctypes.windll.user32
+                CF_UNICODETEXT = 13
+                result = ''
+                if k32.OpenClipboard(0):
+                    try:
+                        h = k32.GetClipboardData(CF_UNICODETEXT)
+                        if h:
+                            ptr = k32.GlobalLock(h)
+                            if ptr:
+                                result = ctypes.c_wchar_p(ptr).value or ''
+                                k32.GlobalUnlock(h)
+                    finally:
+                        k32.CloseClipboard()
+                return result
+        except Exception:
+            pass
+        return ''
+
+
 def main():
     port = pick_port()
     server = uvicorn.Server(uvicorn.Config(
@@ -34,6 +66,7 @@ def main():
         f'http://127.0.0.1:{port}',
         width=880, height=680, min_size=(660, 540),
         background_color='#f5f5f7',
+        js_api=NativeApi(),
     )
     webview.start()
 
