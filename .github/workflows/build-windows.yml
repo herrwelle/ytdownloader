@@ -42,6 +42,8 @@ jobs:
       - name: Compile installer (Inno Setup)
         shell: cmd
         run: |
+          mkdir Languages 2>nul
+          curl -L -o Languages\ChineseSimplified.isl https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/ChineseSimplified.isl
           choco install innosetup -y --no-progress
           iscc installer.iss
 
