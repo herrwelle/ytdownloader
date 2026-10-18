@@ -1,0 +1,58 @@
+name: Build Windows Installer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt pyinstaller
+
+      - name: Download ffmpeg (Windows x64)
+        shell: pwsh
+        run: |
+          curl -L -o ffmpeg.zip https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ff
+          Copy-Item "ff/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe" .
+          Copy-Item "ff/ffmpeg-master-latest-win64-gpl/bin/ffprobe.exe" .
+
+      - name: Build with PyInstaller
+        shell: cmd
+        run: >
+          pyinstaller --clean --noconfirm --windowed --name YTDownloader
+          --icon assets/YTDownloader.ico
+          --add-data "static;static"
+          --add-binary "ffmpeg.exe;."
+          --add-binary "ffprobe.exe;."
+          --collect-all yt_dlp
+          --hidden-import webview.platforms.edgechromium
+          run.py
+
+      - name: Compile installer (Inno Setup)
+        shell: cmd
+        run: |
+          choco install innosetup -y --no-progress
+          iscc installer.iss
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: YTDownloader-Windows-Setup
+          path: Output/YTDownloader-Setup.exe
+
+      - name: Upload portable exe folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: YTDownloader-Windows-Portable
+          path: dist/YTDownloader/

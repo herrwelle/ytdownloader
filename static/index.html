@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>视频下载器</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23dc2626' d='M17 18a1 1 0 0 1-.707-.293l-5-5a1 1 0 0 1 0-1.414l5-5A1 1 0 0 1 18 7v10a1 1 0 0 1-1 1zM9 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0v10a1 1 0 0 1-1 1z' transform='rotate(180 12 12)'/></svg>">
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --card: #ffffff;
+    --text: #1d1d1f;
+    --muted: #86868b;
+    --line: #e5e5ea;
+    --accent: #dc2626;
+    --accent-h: #b91c1c;
+    --ok: #059669;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 48px 20px 80px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  header { text-align: center; margin-bottom: 32px; }
+  header h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+  header p { color: var(--muted); font-size: 14px; margin-top: 6px; }
+
+  .search {
+    display: flex; gap: 10px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 8px;
+  }
+  .search input {
+    flex: 1; border: none; outline: none; font-size: 15px;
+    padding: 10px 12px; background: transparent; min-width: 0;
+    -webkit-appearance: none; appearance: none;
+    caret-color: var(--text);
+  }
+  .search input:focus { outline: none; box-shadow: none; border: none; }
+  .search input:-webkit-autofill {
+    -webkit-box-shadow: 0 0 0 1000px var(--card) inset;
+    -webkit-text-fill-color: var(--text);
+  }
+  .search input::placeholder { color: #c7c7cc; }
+
+  #ctxmenu {
+    display: none; position: fixed; z-index: 99;
+    background: rgba(255,255,255,0.98); backdrop-filter: blur(10px);
+    border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.14);
+    padding: 4px; min-width: 130px; font-size: 13px;
+  }
+  #ctxmenu .ctx-item {
+    padding: 7px 12px; border-radius: 7px; cursor: pointer; color: var(--text);
+  }
+  #ctxmenu .ctx-item:hover { background: #f2f2f7; }
+  #ctxmenu .ctx-hint {
+    padding: 6px 12px 4px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); margin-top: 3px;
+  }
+  .btn {
+    border: none; cursor: pointer; border-radius: 10px;
+    font-size: 15px; font-weight: 600; padding: 10px 22px;
+    background: var(--accent); color: #fff;
+    transition: background .15s, opacity .15s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--accent-h); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.secondary { background: #f2f2f7; color: var(--text); }
+  .btn.secondary:hover { background: #e8e8ed; }
+
+  .msg {
+    display: none; margin-top: 14px; padding: 12px 16px;
+    border-radius: 12px; font-size: 14px; line-height: 1.5;
+    background: var(--card); border: 1px solid var(--line); color: #3a3a3c;
+  }
+  .msg.error { display: block; }
+
+  .result {
+    display: none; margin-top: 20px;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .meta { display: flex; gap: 16px; padding: 18px; }
+  .meta img {
+    width: 200px; aspect-ratio: 16/9; object-fit: cover;
+    border-radius: 10px; background: #eee; flex-shrink: 0;
+  }
+  .meta .info { min-width: 0; display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }
+  .meta .title { font-size: 16px; font-weight: 600; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .meta .sub { color: var(--muted); font-size: 13px; }
+
+  .groups { padding: 4px 18px 6px; }
+  .group-title {
+    font-size: 12px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .5px;
+    margin: 14px 0 6px;
+  }
+  .opt {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 12px; border-radius: 10px;
+    cursor: pointer; border: 1.5px solid transparent;
+    transition: background .12s, border-color .12s;
+  }
+  .opt:hover { background: #f7f7f9; }
+  .opt.selected { background: #fef2f2; border-color: var(--accent); }
+  .opt input { accent-color: var(--accent); width: 16px; height: 16px; flex-shrink: 0; }
+  .opt .body { flex: 1; min-width: 0; }
+  .opt .l1 { font-size: 14px; font-weight: 600; }
+  .opt .l2 { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .opt .size { font-size: 12px; color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+  .action {
+    padding: 16px 18px; border-top: 1px solid var(--line);
+    display: none;
+  }
+  .action .btn { width: 100%; padding: 13px; font-size: 16px; }
+
+  .progress { display: none; margin-bottom: 14px; }
+  .bar { height: 8px; background: #ececf0; border-radius: 99px; overflow: hidden; }
+  .bar .fill {
+    height: 100%; width: 0%; border-radius: 99px;
+    background: var(--accent); transition: width .3s;
+  }
+  .bar.indeterminate .fill {
+    width: 30%; animation: slide 1.1s ease-in-out infinite;
+    background: linear-gradient(90deg, #f87171, var(--accent));
+  }
+  @keyframes slide {
+    0% { margin-left: -30%; } 100% { margin-left: 100%; }
+  }
+  .ptext { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .ptext .status.done { color: #3a3a3c; font-weight: 600; }
+  .ptext .status.err { color: #3a3a3c; font-weight: 600; }
+
+  footer { text-align: center; color: #c7c7cc; font-size: 12px; margin-top: 40px; }
+
+  @media (max-width: 560px) {
+    .meta { flex-direction: column; }
+    .meta img { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>视频下载器</h1>
+    <p>粘贴链接，选择格式下载 · 支持 YouTube、Bilibili 等数千个站点</p>
+  </header>
+
+  <div class="search">
+    <input id="url" type="text" placeholder="粘贴视频链接" autofocus spellcheck="false" autocorrect="off" autocapitalize="off">
+    <button class="btn" id="analyzeBtn" onclick="analyze()">分析</button>
+  </div>
+  <div class="msg" id="msg"></div>
+
+  <div id="ctxmenu">
+    <div class="ctx-item" onclick="doPaste(event)">粘贴</div>
+    <div class="ctx-item" onclick="doClear()">清空</div>
+    <div class="ctx-hint">也可直接按 ⌘V 粘贴</div>
+  </div>
+
+  <div class="result" id="result">
+    <div class="meta">
+      <img id="thumb" alt="" onerror="this.style.visibility='hidden'">
+      <div class="info">
+        <div class="title" id="vTitle"></div>
+        <div class="sub" id="vUploader"></div>
+        <div class="sub" id="vDuration"></div>
+      </div>
+    </div>
+    <div class="groups" id="groups"></div>
+    <div class="action" id="action">
+      <div class="progress" id="progress">
+        <div class="bar" id="bar"><div class="fill" id="fill"></div></div>
+        <div class="ptext">
+          <span class="status" id="status"></span>
+          <span id="pdetail"></span>
+        </div>
+      </div>
+      <button class="btn" id="dlBtn" onclick="startDownload()" disabled>下载</button>
+    </div>
+  </div>
+
+  <footer>3995 Hz · 仅供个人学习使用，请尊重版权</footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let state = { url: null, selected: null, polling: null };
+
+function showMsg(text) {
+  const m = $('msg');
+  if (!text) { clearMsg(); return; }
+  m.textContent = text;
+  m.classList.add('error');
+}
+function clearMsg() { $('msg').classList.remove('error'); }
+
+function fmtSize(bytes) {
+  if (!bytes) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0;
+  while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+  return bytes.toFixed(i > 1 ? 1 : 0) + ' ' + units[i];
+}
+function fmtDur(s) {
+  if (!s) return '';
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+  const mm = String(m).padStart(2, '0'), ss = String(sec).padStart(2, '0');
+  return h ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+}
+function fmtSpeed(b) {
+  if (!b) return '';
+  return fmtSize(b) + '/s';
+}
+function fmtEta(s) {
+  if (s == null) return '';
+  const m = Math.floor(s / 60), sec = Math.round(s % 60);
+  return `剩余 ${m}:${String(sec).padStart(2, '0')}`;
+}
+
+async function analyze() {
+  const url = $('url').value.trim();
+  if (!url) { $('url').focus(); return; }
+  clearMsg();
+  const btn = $('analyzeBtn');
+  btn.disabled = true; btn.textContent = '分析中…';
+  $('result').style.display = 'none';
+  stopPolling();
+  try {
+    const res = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '分析失败');
+    state.url = url;
+    render(data);
+  } catch (e) {
+    showMsg(e.message.includes('Failed to fetch') ? '无法连接本地服务，请检查服务是否在运行' : e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '分析';
+  }
+}
+
+function render(d) {
+  clearMsg();
+  $('thumb').src = d.thumbnail;
+  $('thumb').style.visibility = 'visible';
+  $('vTitle').textContent = d.title;
+  $('vUploader').textContent = d.uploader;
+  $('vDuration').textContent = fmtDur(d.duration);
+
+  const groups = [
+    ['视频 · 含声音（即下即播）', d.progressive],
+    ['超清 · 1080p / 4K / 8K（自动合并音轨）', d.video],
+    ['音频', d.audio],
+  ];
+  const g = $('groups');
+  g.innerHTML = '';
+  for (const [title, list] of groups) {
+    if (!list || !list.length) continue;
+    const h = document.createElement('div');
+    h.className = 'group-title';
+    h.textContent = title;
+    g.appendChild(h);
+    for (const f of list) {
+      const label = document.createElement('label');
+      label.className = 'opt';
+      label.innerHTML = `
+        <input type="radio" name="fmt" value="${f.id}">
+        <div class="body">
+          <div class="l1">${f.label}</div>
+          <div class="l2">${f.sub}</div>
+        </div>
+        <span class="size">${fmtSize(f.size)}</span>`;
+      label.onclick = () => {
+        document.querySelectorAll('.opt').forEach(o => o.classList.remove('selected'));
+        label.classList.add('selected');
+        label.querySelector('input').checked = true;
+        state.selected = { spec: f.spec, mode: f.mode };
+        $('dlBtn').disabled = false;
+        resetProgress();
+      };
+      g.appendChild(label);
+    }
+  }
+  state.selected = null;
+  $('dlBtn').disabled = true;
+  $('dlBtn').textContent = '下载';
+  $('action').style.display = 'block';
+  $('progress').style.display = 'none';
+  $('result').style.display = 'block';
+  $('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function resetProgress() {
+  stopPolling();
+  $('progress').style.display = 'none';
+  $('bar').style.display = '';
+  $('bar').classList.remove('indeterminate');
+  $('fill').style.width = '0%';
+  $('dlBtn').disabled = false;
+  $('dlBtn').textContent = '下载';
+}
+
+async function startDownload() {
+  if (!state.selected || !state.url) return;
+  clearMsg();
+  const btn = $('dlBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: state.url, spec: state.selected.spec, mode: state.selected.mode }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '启动下载失败');
+    btn.textContent = '准备中…';
+    $('progress').style.display = 'block';
+    $('bar').classList.add('indeterminate');
+    $('status').textContent = '正在准备…';
+    $('pdetail').textContent = '';
+    poll(data.task_id);
+  } catch (e) {
+    showMsg(e.message);
+    btn.disabled = false;
+  }
+}
+
+function poll(taskId) {
+  stopPolling();
+  state.polling = setInterval(async () => {
+    let t;
+    try {
+      const res = await fetch('/api/progress/' + taskId);
+      if (!res.ok) throw 0;
+      t = await res.json();
+    } catch { return; }
+    const st = $('status'), pd = $('pdetail');
+    if (t.status === 'downloading') {
+      $('bar').classList.remove('indeterminate');
+      $('fill').style.width = (t.progress || 0) + '%';
+      st.textContent = '下载中 ' + (t.progress || 0) + '%';
+      st.className = 'status';
+      pd.textContent = [fmtSpeed(t.speed), fmtEta(t.eta)].filter(Boolean).join(' · ');
+    } else if (t.status === 'processing') {
+      $('bar').classList.add('indeterminate');
+      st.textContent = '正在合并音轨 / 转码…';
+      pd.textContent = '';
+    } else if (t.status === 'done') {
+      stopPolling();
+      $('bar').style.display = 'none';
+      if (t.saved_path) {
+        st.textContent = '完成 · 已保存到「下载」文件夹';
+        st.className = 'status done';
+        pd.innerHTML = `<a href="#" style="color:#3a3a3c;text-decoration:underline" onclick="reveal('${taskId}');return false">${t.filename} · 在 Finder 中显示</a>`;
+      } else {
+        st.textContent = '完成 · 浏览器已开始下载';
+        st.className = 'status done';
+        pd.textContent = '';
+        window.location.href = '/api/file/' + taskId;
+      }
+      $('dlBtn').textContent = '已完成，可继续选其他格式';
+      $('dlBtn').disabled = false;
+    } else if (t.status === 'error') {
+      stopPolling();
+      st.textContent = '下载失败';
+      st.className = 'status err';
+      pd.textContent = '';
+      showMsg(t.error || '未知错误');
+      $('dlBtn').textContent = '重试';
+      $('dlBtn').disabled = false;
+    }
+  }, 400);
+}
+
+function stopPolling() {
+  if (state.polling) { clearInterval(state.polling); state.polling = null; }
+}
+
+async function reveal(taskId) {
+  try { await fetch('/api/reveal/' + taskId); } catch (e) {}
+}
+
+$('url').addEventListener('keydown', e => { if (e.key === 'Enter') analyze(); });
+
+const ctxMenu = $('ctxmenu');
+$('url').addEventListener('contextmenu', e => {
+  e.preventDefault();
+  ctxMenu.style.display = 'block';
+  const w = 150, h = 110;
+  let x = e.clientX, y = e.clientY;
+  if (x + w > window.innerWidth) x = window.innerWidth - w - 8;
+  if (y + h > window.innerHeight) y = window.innerHeight - h - 8;
+  ctxMenu.style.left = x + 'px';
+  ctxMenu.style.top = y + 'px';
+});
+document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') ctxMenu.style.display = 'none'; });
+
+async function doPaste(e) {
+  e && e.stopPropagation();
+  ctxMenu.style.display = 'none';
+  const input = $('url');
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) { input.value = text.trim(); input.focus(); }
+  } catch (err) {
+    input.focus();
+  }
+}
+function doClear() {
+  ctxMenu.style.display = 'none';
+  $('url').value = '';
+  $('url').focus();
+}
+</script>
+</body>
+</html>

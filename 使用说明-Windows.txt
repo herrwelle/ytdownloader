@@ -1,0 +1,34 @@
+YTDownloader 视频下载器 (Windows 版) — 使用说明
+==================================================
+
+适用系统：Windows 10 / 11（64 位）
+
+【首次运行】
+  1. 解压整个文件夹到任意位置（不要只拷贝单个文件）
+  2. 双击「启动.bat」
+     · 第一次会自动安装 Python 依赖和 ffmpeg（需要联网，约 2-3 分钟）
+     · 如果电脑没装过 Python，会尝试用 winget 自动安装，
+       装完后请再双击一次「启动.bat」
+  3. 之后每次双击「启动.bat」都会直接打开软件窗口（无黑窗口残留）
+
+【使用】
+  1. 粘贴视频链接（YouTube、B站等数千个站点）→ 点「分析」
+  2. 选择格式：
+       · 视频 · 含声音 —— 即下即播（最高 720p，YouTube 的限制）
+       · 超清 —— 1080p / 2K / 4K / 8K，自动合并音轨
+       · 音频 —— MP3 或原始音质
+  3. 点「下载」，完成后文件自动保存到「下载」文件夹，
+     点「在 Finder 中显示」可定位文件（Windows 上为资源管理器）
+
+【常见问题】
+  · 提示找不到 Python：安装 https://www.python.org/downloads/ 
+    （勾选 Add python.exe to PATH），或升级到 Win11 后用 winget
+  · 窗口打不开：极少见的旧系统缺少 WebView2 运行时，安装
+    https://developer.microsoft.com/microsoft-edge/webview2/
+  · 杀毒软件误报：本程序含打包的 ffmpeg，属正常，添加信任即可
+  · YouTube 解析失败：YouTube 改版所致，更新 yt-dlp 即可
+    （在文件夹里执行：.venv\Scripts\pip install -U yt-dlp）
+  · 4K/8K 合并后是 mkv 容器，推荐用 VLC 或 PotPlayer 播放
+
+【说明】
+  · 仅供个人学习使用，请尊重版权，勿用于商业用途

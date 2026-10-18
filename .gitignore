@@ -1,0 +1,14 @@
+.venv/
+.venv-x86/
+.py-x86/
+__pycache__/
+build/
+dist/
+dist-intel/
+bin/
+bin-intel/
+*.zip
+*.log
+.DS_Store
+assets/icon_1024.png
+assets/YTDownloader.iconset/

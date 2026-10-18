@@ -1,0 +1,4 @@
+fastapi>=0.110
+uvicorn>=0.29
+yt-dlp>=2024.10.7
+pywebview>=5.0
