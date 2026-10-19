@@ -30,7 +30,7 @@ jobs:
       - name: Vendor bgutil-ytdlp-pot-provider server (v2.0.2)
         shell: pwsh
         run: |
-          curl -L -o bgutil.zip https://github.com/Brainicism/bgutil-ytdlp-pot-provider/archive/refs/tags/v2.0.2.zip
+          curl -L -o bgutil.zip https://github.com/Brainicism/bgutil-ytdlp-pot-provider/archive/refs/tags/2.0.2.zip
           Expand-Archive bgutil.zip -DestinationPath bgzip
           Copy-Item -Recurse bgzip/bgutil-ytdlp-pot-provider-2.0.2/server bgutil-server-tmp
 
