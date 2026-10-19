@@ -11,7 +11,7 @@ from starlette.background import BackgroundTask
 
 import downloader
 
-BASE_DIR = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
+BASE_DIR = downloader._data_root('static/index.html')
 
 app = FastAPI(title='yt-dlp 本地下载器')
 

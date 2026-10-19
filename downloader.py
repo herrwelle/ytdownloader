@@ -30,9 +30,19 @@ def log(line):
     except Exception:
         pass
 
-# 打包后内嵌的 ffmpeg 目录（PyInstaller --add-binary），开发时回退到 bin/ 或 PATH
-_BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
-# macOS .app：二进制在 Contents/Frameworks（_MEIPASS），数据文件在 Contents/Resources
+# 打包后内嵌的 ffmpeg 目录（PyInstaller --add-binary），开发时回退到 bin/ 或 PATH。
+# PyInstaller 6 的 macOS .app 有两种布局：framework 包数据/二进制在 Contents/Frameworks
+# （Resources 下是指向 Frameworks 的软链接）；非 framework 包 exe 在 Contents/MacOS 且
+# _MEIPASS 指向 MacOS，但数据文件实际落在 Contents/Frameworks 与 Contents/Resources。
+# 因此按 marker 探测各候选根，取第一个命中的目录。
+def _data_root(marker):
+    cands = [Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))]
+    exe = Path(sys.executable).resolve()
+    if exe.parent.name == 'MacOS':
+        cands += [exe.parent.parent / 'Frameworks', exe.parent.parent / 'Resources']
+    return next((d for d in cands if (d / marker).exists()), cands[0])
+
+_BASE = _data_root('ffmpeg')
 _APP_DATA = _BASE.parent / 'Resources'
 _FFMPEG_CANDIDATES = [
     _BASE,
