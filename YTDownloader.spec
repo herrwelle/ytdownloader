@@ -1,10 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import copy_metadata
 
-datas = [('static', 'static')]
-binaries = [('bin-intel/ffmpeg', '.'), ('bin-intel/ffprobe', '.')]
-hiddenimports = ['webview.platforms.cocoa']
+datas = [('static', 'static'), ('assets/YTDownloader.icns', '.'), ('/tmp/pot-stage/bgutil-server', 'bgutil/server')]
+binaries = [('bin/ffmpeg', '.'), ('bin/ffprobe', '.'), ('/tmp/pot-stage/deno-rarm64/deno', 'deno')]
+hiddenimports = ['webview.platforms.wkwebview']
+datas += copy_metadata('bgutil-ytdlp-pot-provider')
 tmp_ret = collect_all('yt_dlp')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('yt_dlp_plugins')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 

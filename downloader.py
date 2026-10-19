@@ -31,6 +31,8 @@ def log(line):
 
 # 打包后内嵌的 ffmpeg 目录（PyInstaller --add-binary），开发时回退到 bin/ 或 PATH
 _BASE = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
+# macOS .app：二进制在 Contents/Frameworks（_MEIPASS），数据文件在 Contents/Resources
+_APP_DATA = _BASE.parent / 'Resources'
 _FFMPEG_CANDIDATES = [
     _BASE,
     Path(__file__).resolve().parent / 'bin',
@@ -40,6 +42,29 @@ FFMPEG_LOCATION = next(
      if (d / 'ffmpeg').exists() or (d / 'ffmpeg.exe').exists()),
     None,
 )
+
+# JS runtime deno (required for obtaining YouTube HD formats; yt-dlp locates it via PATH) + PO token generation script directory (bgutil)
+_DENO_CANDIDATES = [
+    _BASE / 'deno',
+    Path(__file__).resolve().parent / 'bin',
+]
+DENO_DIR = next(
+    (str(d) for d in _DENO_CANDIDATES if (d / 'deno').exists() or (d / 'deno.exe').exists()),
+    None,
+)
+if DENO_DIR:
+    os.environ['PATH'] = DENO_DIR + os.pathsep + os.environ.get('PATH', '')
+BGUTIL_SERVER_HOME = next(
+    (str(d / 'bgutil/server') for d in (_BASE, _APP_DATA, Path(__file__).resolve().parent)
+     if (d / 'bgutil/server/src/generate_once.ts').exists()),
+    None,
+)
+
+def _extractor_args_override(opts):
+    if BGUTIL_SERVER_HOME:
+        opts.setdefault('extractor_args', {})['youtubepot-bgutilscript'] = {
+            'server_home': [BGUTIL_SERVER_HOME],
+        }
 
 # task_id -> {status, progress, speed, eta, filename, filepath, saved_path, error}
 TASKS = {}
@@ -94,6 +119,7 @@ def analyze(url):
         'noprogress': True,
         'socket_timeout': 20,
     }
+    _extractor_args_override(opts)
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
 
@@ -234,6 +260,7 @@ def _download(task_id, url, spec, mode):
     }
     if FFMPEG_LOCATION:
         opts['ffmpeg_location'] = FFMPEG_LOCATION
+    _extractor_args_override(opts)
     if mode == 'mp3':
         opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
@@ -241,7 +268,7 @@ def _download(task_id, url, spec, mode):
             'preferredquality': '0',
         }]
     try:
-        log(f'开始下载: {url} | 格式: {spec} | 模式: {mode} | ffmpeg: {FFMPEG_LOCATION or "PATH"} | yt-dlp: {yt_dlp.version.__version__}')
+        log(f'开始下载: {url} | 格式: {spec} | 模式: {mode} | ffmpeg: {FFMPEG_LOCATION or "PATH"} | deno: {DENO_DIR or "PATH"} | pot: {BGUTIL_SERVER_HOME or "无"} | yt-dlp: {yt_dlp.version.__version__}')
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
@@ -251,7 +278,11 @@ def _download(task_id, url, spec, mode):
                 # YouTube 风控拒绝当前客户端，换 tv 客户端重试（无需 PO token）
                 log(f'403 被拒，改用 tv 客户端重试: {msg[:150]}')
                 retry_opts = dict(opts)
-                retry_opts['extractor_args'] = {'youtube': {'player_client': ['tv']}}
+                retry_args = dict(opts.get('extractor_args') or {})
+                yt_args = dict(retry_args.get('youtube') or {})
+                yt_args['player_client'] = ['tv']
+                retry_args['youtube'] = yt_args
+                retry_opts['extractor_args'] = retry_args
                 with yt_dlp.YoutubeDL(retry_opts) as ydl:
                     ydl.download([url])
             elif mode == 'video' and 'Conversion failed' in msg:

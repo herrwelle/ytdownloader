@@ -19,6 +19,32 @@ jobs:
         run: |
           pip install -r requirements.txt pyinstaller
 
+      - name: Download deno runtime (Windows x64)
+        shell: pwsh
+        run: |
+          curl -L -o deno.zip https://github.com/denoland/deno/releases/download/v2.9.7/deno-x86_64-pc-windows-msvc.zip
+          Expand-Archive deno.zip -DestinationPath deno-tmp
+          New-Item -ItemType Directory -Force deno | Out-Null
+          Copy-Item deno-tmp/deno.exe deno/deno.exe
+
+      - name: Vendor bgutil-ytdlp-pot-provider server (v2.0.2)
+        shell: pwsh
+        run: |
+          curl -L -o bgutil.zip https://github.com/Brainicism/bgutil-ytdlp-pot-provider/archive/refs/tags/v2.0.2.zip
+          Expand-Archive bgutil.zip -DestinationPath bgzip
+          Copy-Item -Recurse bgzip/bgutil-ytdlp-pot-provider-2.0.2/server bgutil-server-tmp
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install bgutil server deps
+        shell: pwsh
+        run: |
+          Set-Location bgutil-server-tmp
+          npm ci --omit=dev --ignore-scripts
+          Set-Location ..
+
       - name: Download ffmpeg (Windows x64)
         shell: pwsh
         run: |
@@ -33,11 +59,22 @@ jobs:
           pyinstaller --clean --noconfirm --windowed --name YTDownloader
           --icon assets/YTDownloader.ico
           --add-data "static;static"
+          --add-data "bgutil-server-tmp;bgutil\server"
           --add-binary "ffmpeg.exe;."
           --add-binary "ffprobe.exe;."
+          --add-binary "deno\deno.exe;deno"
           --collect-all yt_dlp
+          --collect-all yt_dlp_plugins
+          --copy-metadata bgutil-ytdlp-pot-provider
           --hidden-import webview.platforms.edgechromium
           run.py
+
+      - name: Smoke test packaged runtime
+        shell: pwsh
+        run: |
+          $ver = & dist\YTDownloader\_internal\deno\deno.exe run --allow-all dist\YTDownloader\_internal\bgutil\server\src\generate_once.ts --version
+          Write-Host "generate_once version: $ver"
+          if ("$ver" -notmatch '2\.0\.2') { exit 1 }
 
       - name: Compile installer (Inno Setup)
         shell: cmd
