@@ -24,6 +24,7 @@ class DownloadReq(BaseModel):
     url: str
     spec: str
     mode: str = 'video'
+    container: str | None = None
 
 
 @app.post('/api/analyze')
@@ -42,7 +43,7 @@ def analyze(req: AnalyzeReq):
 
 @app.post('/api/download')
 def download(req: DownloadReq):
-    task_id = downloader.start_download(req.url.strip(), req.spec, req.mode)
+    task_id = downloader.start_download(req.url.strip(), req.spec, req.mode, req.container)
     return {'task_id': task_id}
 
 

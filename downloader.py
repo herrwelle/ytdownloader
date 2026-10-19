@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 import yt_dlp
+from yt_dlp.postprocessor.ffmpeg import FFmpegVideoConvertorPP
 
 # 跨平台日志文件：排查下载失败用
 if sys.platform == 'darwin':
@@ -141,10 +142,11 @@ def analyze(url):
             progressive.append({
                 'id': f.get('format_id'),
                 'label': f'{h}p',
-                'sub': f'{ext} · 音画合一' + (f" · {int(f['fps'])}帧" if f.get('fps') and f['fps'] > 30 else ''),
+                'sub': f'{ext.upper()} · 音画合一' + (f" · {int(f['fps'])}帧" if f.get('fps') and f['fps'] > 30 else ''),
                 'size': size,
                 'spec': str(f.get('format_id')),
                 'mode': 'video',
+                'container': 'mp4',
             })
         elif vcodec != 'none':
             h = _height(f)
@@ -153,13 +155,20 @@ def analyze(url):
             fps = f.get('fps') or 0
             mark = ' (8K)' if h >= 4320 else ' (4K)' if h >= 2160 else ' (2K)' if h >= 1440 else ''
             codec = _codec_name(vcodec)
+            container = 'mp4' if codec == 'H.264' else 'mkv'
+            audio_spec = (
+                f"{f.get('format_id')}+bestaudio[m4a]/{f.get('format_id')}+bestaudio"
+                if container == 'mp4'
+                else f"{f.get('format_id')}+bestaudio"
+            )
             video.append({
                 'id': f.get('format_id'),
                 'label': f'{h}p{mark}' + (f' · {int(fps)}帧' if fps > 30 else ''),
-                'sub': f'{ext} · {codec} · 自动合并音轨',
+                'sub': f'{"MP4" if container == "mp4" else "MKV"} · {codec} · 自动合并音轨',
                 'size': size,
-                'spec': f"{f.get('format_id')}+bestaudio/{f.get('format_id')}",
+                'spec': f'{audio_spec}/{f.get("format_id")}',
                 'mode': 'video',
+                'container': container,
                 '_h': h,
                 '_fps': fps,
                 '_ext': ext,
@@ -228,6 +237,28 @@ def analyze(url):
     }
 
 
+def _pp_hook(task_id):
+    def hook(d):
+        if 'Convertor' not in (d.get('postprocessor') or ''):
+            return
+        task = TASKS.get(task_id)
+        if not task:
+            return
+        if d['status'] == 'started':
+            task['status'] = 'converting'
+        elif d['status'] == 'finished' and task.get('status') == 'converting':
+            task['status'] = 'processing'
+    return hook
+
+
+class _TranscodeMp4PP(FFmpegVideoConvertorPP):
+    @staticmethod
+    def _options(target_ext):
+        yield from FFmpegVideoConvertorPP.stream_copy_opts(False)
+        yield from ('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+                    '-c:a', 'aac', '-b:a', '192k', '-c:s', 'mov_text')
+
+
 def _hook(task_id, d):
     task = TASKS.get(task_id)
     if not task:
@@ -246,7 +277,7 @@ def _hook(task_id, d):
         task.update({'status': 'processing', 'progress': 100})
 
 
-def _download(task_id, url, spec, mode):
+def _download(task_id, url, spec, mode, container=None):
     task = TASKS[task_id]
     outdir = tempfile.mkdtemp(prefix='ytdl_')
     opts = {
@@ -257,7 +288,10 @@ def _download(task_id, url, spec, mode):
         'no_warnings': True,
         'concurrent_fragment_downloads': 4,
         'progress_hooks': [lambda d: _hook(task_id, d)],
+        'postprocessor_hooks': [_pp_hook(task_id)],
     }
+    if container in ('mkv', 'transcode'):
+        opts['merge_output_format'] = 'mkv'
     if FFMPEG_LOCATION:
         opts['ffmpeg_location'] = FFMPEG_LOCATION
     _extractor_args_override(opts)
@@ -267,10 +301,16 @@ def _download(task_id, url, spec, mode):
             'preferredcodec': 'mp3',
             'preferredquality': '0',
         }]
+    def _open_ydl(o):
+        ydl = yt_dlp.YoutubeDL(o)
+        if container == 'transcode':
+            ydl.add_post_processor(_TranscodeMp4PP(preferedformat='mp4'))
+        return ydl
+
     try:
-        log(f'开始下载: {url} | 格式: {spec} | 模式: {mode} | ffmpeg: {FFMPEG_LOCATION or "PATH"} | deno: {DENO_DIR or "PATH"} | pot: {BGUTIL_SERVER_HOME or "无"} | yt-dlp: {yt_dlp.version.__version__}')
+        log(f'开始下载: {url} | 格式: {spec} | 模式: {mode} | 容器: {container or "默认"} | ffmpeg: {FFMPEG_LOCATION or "PATH"} | deno: {DENO_DIR or "PATH"} | pot: {BGUTIL_SERVER_HOME or "无"} | yt-dlp: {yt_dlp.version.__version__}')
         try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
+            with _open_ydl(opts) as ydl:
                 ydl.download([url])
         except Exception as e:
             msg = str(e)
@@ -283,13 +323,14 @@ def _download(task_id, url, spec, mode):
                 yt_args['player_client'] = ['tv']
                 retry_args['youtube'] = yt_args
                 retry_opts['extractor_args'] = retry_args
-                with yt_dlp.YoutubeDL(retry_opts) as ydl:
+                with _open_ydl(retry_opts) as ydl:
                     ydl.download([url])
             elif mode == 'video' and 'Conversion failed' in msg:
-                # 部分视频流含无时间戳数据包，mkv 封装器会失败；自动改用 mp4 容器重试（已下载的流会复用）
-                log(f'mkv 合并失败，自动改用 mp4 容器重试: {msg[:150]}')
-                retry_opts = dict(opts, merge_output_format='mp4')
-                with yt_dlp.YoutubeDL(retry_opts) as ydl:
+                # 封装器拒绝该编码组合时换备用容器重试（已下载的流会复用）：默认 mp4 → 改试 mkv；mkv/transcode → 改试 mp4
+                alt = 'mp4' if container in ('mkv', 'transcode') else 'mkv'
+                log(f'合并失败，自动改用 {alt} 容器重试: {msg[:150]}')
+                retry_opts = dict(opts, merge_output_format=alt)
+                with _open_ydl(retry_opts) as ydl:
                     ydl.download([url])
             else:
                 raise
@@ -319,10 +360,10 @@ def _download(task_id, url, spec, mode):
         shutil.rmtree(outdir, ignore_errors=True)
 
 
-def start_download(url, spec, mode):
+def start_download(url, spec, mode, container=None):
     task_id = uuid.uuid4().hex[:12]
     TASKS[task_id] = {'status': 'starting', 'progress': 0}
-    threading.Thread(target=_download, args=(task_id, url, spec, mode), daemon=True).start()
+    threading.Thread(target=_download, args=(task_id, url, spec, mode, container), daemon=True).start()
     return task_id
 
 

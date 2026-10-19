@@ -117,6 +117,8 @@
   .opt .l1 { font-size: 14px; font-weight: 600; }
   .opt .l2 { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .opt .size { font-size: 12px; color: var(--muted); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .transcode-opt { display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+  .transcode-opt input { accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; }
 
   .action {
     padding: 16px 18px; border-top: 1px solid var(--line);
@@ -186,6 +188,10 @@
           <span id="pdetail"></span>
         </div>
       </div>
+      <label class="transcode-opt" id="transcodeWrap" style="display:none">
+        <input type="checkbox" id="transcodeChk">
+        转码为通用 MP4（H.264，兼容性最好 · 需重新编码，速度较慢）
+      </label>
       <button class="btn" id="dlBtn" onclick="startDownload()" disabled>下载</button>
     </div>
   </div>
@@ -288,14 +294,18 @@ function render(d) {
         document.querySelectorAll('.opt').forEach(o => o.classList.remove('selected'));
         label.classList.add('selected');
         label.querySelector('input').checked = true;
-        state.selected = { spec: f.spec, mode: f.mode };
+        state.selected = { spec: f.spec, mode: f.mode, container: f.container || null };
         $('dlBtn').disabled = false;
+        const showTranscode = f.mode === 'video' && f.container === 'mkv';
+        $('transcodeWrap').style.display = showTranscode ? 'flex' : 'none';
+        if (showTranscode) $('transcodeChk').checked = false;
         resetProgress();
       };
       g.appendChild(label);
     }
   }
   state.selected = null;
+  $('transcodeWrap').style.display = 'none';
   $('dlBtn').disabled = true;
   $('dlBtn').textContent = '下载';
   $('action').style.display = 'block';
@@ -323,7 +333,12 @@ async function startDownload() {
     const res = await fetch('/api/download', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: state.url, spec: state.selected.spec, mode: state.selected.mode }),
+      body: JSON.stringify({
+        url: state.url,
+        spec: state.selected.spec,
+        mode: state.selected.mode,
+        container: $('transcodeChk').checked && state.selected.container === 'mkv' ? 'transcode' : state.selected.container,
+      }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || '启动下载失败');
@@ -357,7 +372,11 @@ function poll(taskId) {
       pd.textContent = [fmtSpeed(t.speed), fmtEta(t.eta)].filter(Boolean).join(' · ');
     } else if (t.status === 'processing') {
       $('bar').classList.add('indeterminate');
-      st.textContent = '正在合并音轨 / 转码…';
+      st.textContent = '正在合并音轨…';
+      pd.textContent = '';
+    } else if (t.status === 'converting') {
+      $('bar').classList.add('indeterminate');
+      st.textContent = '正在转码为通用 MP4…（视分辨率可能需要几分钟）';
       pd.textContent = '';
     } else if (t.status === 'done') {
       stopPolling();
