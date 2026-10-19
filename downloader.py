@@ -167,7 +167,7 @@ def analyze(url):
             codec = _codec_name(vcodec)
             container = 'mp4' if codec == 'H.264' else 'mkv'
             audio_spec = (
-                f"{f.get('format_id')}+bestaudio[m4a]/{f.get('format_id')}+bestaudio"
+                f"{f.get('format_id')}+bestaudio[ext=m4a]/{f.get('format_id')}+bestaudio"
                 if container == 'mp4'
                 else f"{f.get('format_id')}+bestaudio"
             )
