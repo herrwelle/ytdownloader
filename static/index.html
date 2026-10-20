@@ -196,11 +196,14 @@
     </div>
   </div>
 
-  <footer>3995 Hz · 仅供个人学习使用，请尊重版权</footer>
+  <footer>3995 Hz · 仅供个人学习使用，请尊重版权
+    <div style="margin-top:4px">v1.0</div>
+  </footer>
 </div>
 
 <script>
 const $ = id => document.getElementById(id);
+const IS_MAC = (navigator.platform || navigator.userAgent).toLowerCase().includes('mac');
 let state = { url: null, selected: null, polling: null };
 
 function showMsg(text) {
@@ -384,7 +387,7 @@ function poll(taskId) {
       if (t.saved_path) {
         st.textContent = '完成 · 已保存到「下载」文件夹';
         st.className = 'status done';
-        pd.innerHTML = `<a href="#" style="color:#3a3a3c;text-decoration:underline" onclick="reveal('${taskId}');return false">${t.filename} · 在 Finder 中显示</a>`;
+        pd.innerHTML = `<a href="#" style="color:#3a3a3c;text-decoration:underline" onclick="reveal('${taskId}');return false">${t.filename} · ${IS_MAC ? '在 Finder 中显示' : '下载'}</a>`;
       } else {
         st.textContent = '完成 · 浏览器已开始下载';
         st.className = 'status done';
