@@ -13,3 +13,5 @@ bin-intel/
 assets/icon_1024.png
 assets/YTDownloader.iconset/
 dist-windows/
+build-intel/
+Output/
