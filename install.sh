@@ -29,6 +29,7 @@ echo "校验 SHA-256 ..."
 echo "${SHA}  $TMP/$ZIP" | shasum -a 256 -c -
 
 DEST="${YTD_INSTALL_DIR:-/Applications}"
+mkdir -p "$DEST" 2>/dev/null || true
 if [ ! -w "$DEST" ]; then
     DEST="$HOME/Applications"
     mkdir -p "$DEST"
