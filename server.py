@@ -18,6 +18,7 @@ app = FastAPI(title='yt-dlp 本地下载器')
 
 class AnalyzeReq(BaseModel):
     url: str
+    cookies_from: str | None = None
 
 
 class DownloadReq(BaseModel):
@@ -25,6 +26,11 @@ class DownloadReq(BaseModel):
     spec: str
     mode: str = 'video'
     container: str | None = None
+    cookies_from: str | None = None
+
+
+def _cookies(value):
+    return value if value in downloader.COOKIE_BROWSERS else None
 
 
 @app.post('/api/analyze')
@@ -33,17 +39,20 @@ def analyze(req: AnalyzeReq):
     if not url:
         raise HTTPException(400, '请输入链接')
     try:
-        return downloader.analyze(url)
+        return downloader.analyze(url, _cookies(req.cookies_from))
     except Exception as e:
         msg = str(e)
-        if 'Unsupported URL' in msg:
+        if 'Sign in to confirm your age' in msg:
+            msg = '该视频有年龄限制：请在上方「Cookie 来源」选择已登录 YouTube 的浏览器后重试'
+        elif 'Unsupported URL' in msg:
             msg = '不支持的链接，请检查后重试'
         raise HTTPException(400, msg)
 
 
 @app.post('/api/download')
 def download(req: DownloadReq):
-    task_id = downloader.start_download(req.url.strip(), req.spec, req.mode, req.container)
+    task_id = downloader.start_download(
+        req.url.strip(), req.spec, req.mode, req.container, _cookies(req.cookies_from))
     return {'task_id': task_id}
 
 

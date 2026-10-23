@@ -7,6 +7,7 @@
 
 - 支持 MP4（H.264 + AAC）与 MKV（VP9/AV1 + Opus）输出
 - 自动获取最高画质，支持 4K / 60fps / HDR 源
+- 支持读取浏览器 Cookie，可下载年龄限制 / 需登录的视频（Chrome / Edge / Safari / Firefox 等）
 - 内置 POT（PO Token）支持，绕开 YouTube 对高画质格式的风控限制
 - 原生桌面窗口（macOS WKWebView / Windows WebView2），深色模式
 - 下载进度实时显示，完成后可在 Finder/资源管理器中定位文件
@@ -42,6 +43,12 @@ curl -fsSL https://raw.githubusercontent.com/herrwelle/ytdownloader/main/install
 3. 点击「下载」，完成后点击文件名可在文件夹中定位
 
 ## 常见问题
+
+**提示「Sign in to confirm your age」（年龄限制视频）？**
+在输入框下方「Cookie 来源」选择已登录 YouTube 的浏览器，然后重新分析、下载。注意：
+- macOS Safari 需要先在「系统设置 → 隐私与安全性 → 完全磁盘访问权限」中允许本应用；
+- Chrome 首次读取可能弹出钥匙串授权，选择「允许」；
+- Cookie 仅在本机读取，不会上传到任何服务器。
 
 **macOS 提示「已损坏，无法打开」？**
 请使用上面的终端一行命令安装（下载过程不带隔离标记，不会触发 Gatekeeper）；或对已解压的 app 执行：

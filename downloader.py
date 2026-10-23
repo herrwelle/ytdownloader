@@ -1,5 +1,6 @@
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -77,6 +78,52 @@ def _extractor_args_override(opts):
             'server_home': [BGUTIL_SERVER_HOME],
         }
 
+
+# bgutil 插件的脚本版本检查默认 15 秒；Windows 首次运行受 Defender 扫描影响易超时，
+# 放宽到 120 秒（挂起保护仍在），并后台预热 deno 编译缓存，避免首次分析被阻塞。
+try:
+    from yt_dlp_plugins.extractor.getpot_bgutil_script import BgUtilScriptPTPBase
+    BgUtilScriptPTPBase._GET_SCRIPT_VSN_TIMEOUT = 120.0
+except Exception:
+    pass
+
+
+def _warm_bgutil():
+    if not (BGUTIL_SERVER_HOME and DENO_DIR):
+        return
+    deno = os.path.join(DENO_DIR, 'deno.exe' if os.name == 'nt' else 'deno')
+    script = os.path.join(BGUTIL_SERVER_HOME, 'src', 'generate_once.ts')
+    node_modules = os.path.join(BGUTIL_SERVER_HOME, 'node_modules')
+    cache = os.path.join(os.path.expanduser('~'), '.cache', 'bgutil-ytdlp-pot-provider')
+    try:
+        r = subprocess.run(
+            [deno, 'run', '--allow-env', '--allow-net',
+             f'--allow-ffi={node_modules}', f'--allow-write={cache}',
+             f'--allow-read={cache},{node_modules}', script, '--version'],
+            capture_output=True, text=True, timeout=180,
+        )
+        log(f'POT 预热完成: rc={r.returncode} out={r.stdout.strip()[:60]}')
+    except Exception as e:
+        log(f'POT 预热失败: {type(e).__name__}: {e}')
+
+
+if BGUTIL_SERVER_HOME and DENO_DIR:
+    threading.Thread(target=_warm_bgutil, daemon=True).start()
+
+
+COOKIE_BROWSERS = {'chrome', 'chromium', 'edge', 'firefox', 'safari', 'brave', 'opera', 'vivaldi', 'whale'}
+
+
+def _apply_cookies(opts, cookies_from):
+    if cookies_from in COOKIE_BROWSERS:
+        opts['cookiesfrombrowser'] = (cookies_from, None, None, None)
+
+
+def _friendly_error(msg):
+    if 'Sign in to confirm your age' in msg:
+        return '该视频有年龄限制：请在上方「Cookie 来源」选择已登录 YouTube 的浏览器后重试'
+    return msg[:500]
+
 # task_id -> {status, progress, speed, eta, filename, filepath, saved_path, error}
 TASKS = {}
 
@@ -122,7 +169,7 @@ def _height(f):
     return h or 0
 
 
-def analyze(url):
+def analyze(url, cookies_from=None):
     opts = {
         'quiet': True,
         'no_warnings': True,
@@ -130,6 +177,7 @@ def analyze(url):
         'noprogress': True,
         'socket_timeout': 20,
     }
+    _apply_cookies(opts, cookies_from)
     _extractor_args_override(opts)
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -287,7 +335,7 @@ def _hook(task_id, d):
         task.update({'status': 'processing', 'progress': 100})
 
 
-def _download(task_id, url, spec, mode, container=None):
+def _download(task_id, url, spec, mode, container=None, cookies_from=None):
     task = TASKS[task_id]
     outdir = tempfile.mkdtemp(prefix='ytdl_')
     opts = {
@@ -304,6 +352,7 @@ def _download(task_id, url, spec, mode, container=None):
         opts['merge_output_format'] = 'mkv'
     if FFMPEG_LOCATION:
         opts['ffmpeg_location'] = FFMPEG_LOCATION
+    _apply_cookies(opts, cookies_from)
     _extractor_args_override(opts)
     if mode == 'mp3':
         opts['postprocessors'] = [{
@@ -365,15 +414,19 @@ def _download(task_id, url, spec, mode, container=None):
             })
         log(f'成功: {task.get("filename")}')
     except Exception as e:
-        task.update({'status': 'error', 'error': str(e)[:500]})
+        task.update({'status': 'error', 'error': _friendly_error(str(e))})
         log(f'失败: {type(e).__name__}: {e}\n{traceback.format_exc()}')
         shutil.rmtree(outdir, ignore_errors=True)
 
 
-def start_download(url, spec, mode, container=None):
+def start_download(url, spec, mode, container=None, cookies_from=None):
     task_id = uuid.uuid4().hex[:12]
     TASKS[task_id] = {'status': 'starting', 'progress': 0}
-    threading.Thread(target=_download, args=(task_id, url, spec, mode, container), daemon=True).start()
+    threading.Thread(
+        target=_download,
+        args=(task_id, url, spec, mode, container, cookies_from),
+        daemon=True,
+    ).start()
     return task_id
 
 

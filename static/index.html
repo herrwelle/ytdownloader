@@ -50,6 +50,13 @@
   }
   .search input::placeholder { color: #c7c7cc; }
 
+  .cookies { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 2px 0; font-size: 12px; color: var(--muted); }
+  .cookies select {
+    font: inherit; color: var(--text); background: var(--card);
+    border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px;
+  }
+  .cookies .hint { font-size: 11px; }
+
   #ctxmenu {
     display: none; position: fixed; z-index: 99;
     background: rgba(255,255,255,0.98); backdrop-filter: blur(10px);
@@ -139,7 +146,10 @@
   @keyframes slide {
     0% { margin-left: -30%; } 100% { margin-left: 100%; }
   }
-  .ptext { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .ptext { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .ptext .status { flex: none; white-space: nowrap; }
+  #pdetail { flex: 1 1 auto; min-width: 0; text-align: right; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #pdetail a { display: inline-block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; vertical-align: bottom; }
   .ptext .status.done { color: #3a3a3c; font-weight: 600; }
   .ptext .status.err { color: #3a3a3c; font-weight: 600; }
 
@@ -161,6 +171,21 @@
   <div class="search">
     <input id="url" type="text" placeholder="粘贴视频链接" autofocus spellcheck="false" autocorrect="off" autocapitalize="off">
     <button class="btn" id="analyzeBtn" onclick="analyze()">分析</button>
+  </div>
+  <div class="cookies">
+    <label for="cookieBrowser">Cookie 来源</label>
+    <select id="cookieBrowser" onchange="saveCookieChoice()">
+      <option value="">不使用（公开视频）</option>
+      <option value="chrome">Chrome</option>
+      <option value="edge">Edge</option>
+      <option value="safari">Safari（需完全磁盘访问）</option>
+      <option value="firefox">Firefox</option>
+      <option value="brave">Brave</option>
+      <option value="chromium">Chromium</option>
+      <option value="opera">Opera</option>
+      <option value="vivaldi">Vivaldi</option>
+    </select>
+    <span class="hint">年龄限制 / 需登录的视频请选择已登录 YouTube 的浏览器</span>
   </div>
   <div class="msg" id="msg"></div>
 
@@ -197,7 +222,7 @@
   </div>
 
   <footer>3995 Hz · 仅供个人学习使用，请尊重版权
-    <div style="margin-top:4px">v1.0</div>
+    <div style="margin-top:4px">v1.1</div>
   </footer>
 </div>
 
@@ -236,6 +261,23 @@ function fmtEta(s) {
   const m = Math.floor(s / 60), sec = Math.round(s % 60);
   return `剩余 ${m}:${String(sec).padStart(2, '0')}`;
 }
+function cookieBrowser() {
+  const v = $('cookieBrowser').value;
+  return v || null;
+}
+function saveCookieChoice() {
+  try { localStorage.setItem('ytdl.cookieBrowser', $('cookieBrowser').value); } catch (e) {}
+}
+function esc(s) {
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function truncateName(name, max) {
+  if (name.length <= max) return name;
+  const dot = name.lastIndexOf('.');
+  const ext = dot > 0 && name.length - dot <= 8 ? name.slice(dot) : '';
+  const base = ext ? name.slice(0, dot) : name;
+  return base.slice(0, Math.max(8, max - ext.length - 1)) + '…' + ext;
+}
 
 async function analyze() {
   const url = $('url').value.trim();
@@ -249,7 +291,7 @@ async function analyze() {
     const res = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, cookies_from: cookieBrowser() }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || '分析失败');
@@ -341,6 +383,7 @@ async function startDownload() {
         spec: state.selected.spec,
         mode: state.selected.mode,
         container: $('transcodeChk').checked && state.selected.container === 'mkv' ? 'transcode' : state.selected.container,
+        cookies_from: cookieBrowser(),
       }),
     });
     const data = await res.json();
@@ -387,7 +430,7 @@ function poll(taskId) {
       if (t.saved_path) {
         st.textContent = '完成 · 已保存到「下载」文件夹';
         st.className = 'status done';
-        pd.innerHTML = `<a href="#" style="color:#3a3a3c;text-decoration:underline" onclick="reveal('${taskId}');return false">${t.filename} · ${IS_MAC ? '在 Finder 中显示' : '下载'}</a>`;
+        pd.innerHTML = `<a href="#" title="${esc(t.filename)}" style="color:#3a3a3c;text-decoration:underline" onclick="reveal('${taskId}');return false">${esc(truncateName(t.filename, 46))} · ${IS_MAC ? '在 Finder 中显示' : '下载'}</a>`;
       } else {
         st.textContent = '完成 · 浏览器已开始下载';
         st.className = 'status done';
@@ -417,6 +460,15 @@ async function reveal(taskId) {
 }
 
 $('url').addEventListener('keydown', e => { if (e.key === 'Enter') analyze(); });
+
+if (!IS_MAC) {
+  const safariOpt = document.querySelector('#cookieBrowser option[value="safari"]');
+  if (safariOpt) safariOpt.remove();
+}
+try {
+  const saved = localStorage.getItem('ytdl.cookieBrowser');
+  if (saved) $('cookieBrowser').value = saved;
+} catch (e) {}
 
 const ctxMenu = $('ctxmenu');
 $('url').addEventListener('contextmenu', e => {
