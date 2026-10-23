@@ -85,7 +85,8 @@ def reveal(task_id: str):
     if sys.platform == 'darwin':
         subprocess.run(['open', '-R', path], check=False)
     elif os.name == 'nt':
-        subprocess.run(['explorer', f'/select,{path}'], check=False)
+        # explorer 要求路径紧跟逗号；含空格时必须用引号包裹，否则会退回「文档」目录
+        subprocess.run(['explorer', f'/select,"{path}"'], check=False)
     else:
         subprocess.run(['xdg-open', os.path.dirname(path)], check=False)
     return {'ok': True}
