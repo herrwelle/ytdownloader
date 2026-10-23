@@ -65,6 +65,7 @@ jobs:
           --add-binary "deno\deno.exe;deno"
           --collect-all yt_dlp
           --collect-all yt_dlp_plugins
+          --collect-all yt_dlp_ejs
           --copy-metadata bgutil-ytdlp-pot-provider
           --hidden-import webview.platforms.edgechromium
           run.py

@@ -10,6 +10,8 @@ tmp_ret = collect_all('yt_dlp')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('yt_dlp_plugins')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('yt_dlp_ejs')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
@@ -59,5 +61,5 @@ app = BUNDLE(
     name='YTDownloader.app',
     icon='assets/YTDownloader.icns',
     bundle_identifier=None,
-    info_plist={'CFBundleShortVersionString': '1.1.0', 'CFBundleVersion': '1.1.0'},
+    info_plist={'CFBundleShortVersionString': '1.1.1', 'CFBundleVersion': '1.1.1'},
 )
