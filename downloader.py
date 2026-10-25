@@ -119,9 +119,22 @@ def _apply_cookies(opts, cookies_from):
         opts['cookiesfrombrowser'] = (cookies_from, None, None, None)
 
 
+def _is_cookie_lock_error(msg):
+    return 'Could not copy' in msg and 'cookie database' in msg
+
+
 def _friendly_error(msg):
+    if 'not a bot' in msg:
+        return (
+            'YouTube 风控拦截：当前网络 IP 被判定可疑。'
+            '使用 VPN/代理的请更换节点（最好换地区，重连同一节点无效）；'
+            '或将电脑连接到手机热点后重试；'
+            '也可在「Cookie 来源」选择已登录 YouTube 的浏览器（Windows 需先完全退出该浏览器）'
+        )
     if 'Sign in to confirm your age' in msg:
         return '该视频有年龄限制：请在上方「Cookie 来源」选择已登录 YouTube 的浏览器后重试'
+    if _is_cookie_lock_error(msg):
+        return '无法读取浏览器 Cookie：浏览器正在运行，请完全退出（含后台进程）后重试；公开视频可切回「不使用」'
     return msg[:500]
 
 # task_id -> {status, progress, speed, eta, filename, filepath, saved_path, error}
@@ -179,8 +192,18 @@ def analyze(url, cookies_from=None):
     }
     _apply_cookies(opts, cookies_from)
     _extractor_args_override(opts)
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as e:
+        # 浏览器锁定 Cookie 数据库时（Windows 常见），自动去掉 Cookie 重试一次
+        if cookies_from and _is_cookie_lock_error(str(e)):
+            log(f'Cookie 数据库被锁，自动回退无 Cookie 分析: {str(e)[:120]}')
+            opts.pop('cookiesfrombrowser', None)
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        else:
+            raise
 
     duration = info.get('duration') or 0
     formats = info.get('formats') or []
@@ -373,7 +396,14 @@ def _download(task_id, url, spec, mode, container=None, cookies_from=None):
                 ydl.download([url])
         except Exception as e:
             msg = str(e)
-            if 'HTTP Error 403' in msg:
+            if cookies_from and _is_cookie_lock_error(msg):
+                # 浏览器锁定 Cookie 数据库时（Windows 常见），自动去掉 Cookie 重试一次
+                log(f'Cookie 数据库被锁，自动回退无 Cookie 下载: {msg[:120]}')
+                fallback_opts = dict(opts)
+                fallback_opts.pop('cookiesfrombrowser', None)
+                with _open_ydl(fallback_opts) as ydl:
+                    ydl.download([url])
+            elif 'HTTP Error 403' in msg:
                 # YouTube 风控拒绝当前客户端，换 tv 客户端重试（无需 PO token）
                 log(f'403 被拒，改用 tv 客户端重试: {msg[:150]}')
                 retry_opts = dict(opts)

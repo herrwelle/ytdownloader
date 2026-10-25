@@ -2,8 +2,8 @@
 from PyInstaller.utils.hooks import collect_all
 from PyInstaller.utils.hooks import copy_metadata
 
-datas = [('static', 'static'), ('assets/YTDownloader.icns', '.'), ('/tmp/pot-stage/bgutil-server', 'bgutil/server')]
-binaries = [('bin/ffmpeg', '.'), ('bin/ffprobe', '.'), ('/tmp/pot-stage/deno-rarm64/deno', 'deno')]
+datas = [('static', 'static'), ('assets/YTDownloader.icns', '.'), ('/Users/bowang/Desktop/YT/.pot-stage/bgutil-server', 'bgutil/server')]
+binaries = [('bin/ffmpeg', '.'), ('bin/ffprobe', '.'), ('/Users/bowang/Desktop/YT/.pot-stage/deno-rarm64/deno', 'deno')]
 hiddenimports = ['webview.platforms.wkwebview']
 datas += copy_metadata('bgutil-ytdlp-pot-provider')
 tmp_ret = collect_all('yt_dlp')
@@ -61,5 +61,5 @@ app = BUNDLE(
     name='YTDownloader.app',
     icon='assets/YTDownloader.icns',
     bundle_identifier=None,
-    info_plist={'CFBundleShortVersionString': '1.1.2', 'CFBundleVersion': '1.1.2'},
+    info_plist={'CFBundleShortVersionString': '1.1.3', 'CFBundleVersion': '1.1.3'},
 )

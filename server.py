@@ -41,10 +41,8 @@ def analyze(req: AnalyzeReq):
     try:
         return downloader.analyze(url, _cookies(req.cookies_from))
     except Exception as e:
-        msg = str(e)
-        if 'Sign in to confirm your age' in msg:
-            msg = '该视频有年龄限制：请在上方「Cookie 来源」选择已登录 YouTube 的浏览器后重试'
-        elif 'Unsupported URL' in msg:
+        msg = downloader._friendly_error(str(e))
+        if 'Unsupported URL' in msg:
             msg = '不支持的链接，请检查后重试'
         raise HTTPException(400, msg)
 
