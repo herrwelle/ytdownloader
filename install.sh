@@ -2,11 +2,11 @@
 set -euo pipefail
 
 REPO="herrwelle/ytdownloader"
-VERSION="v1.1.3"
+VERSION="v1.2.0"
 APP_NAME="YTDownloader"
 
-ARM_SHA="feedec1808cda3bfa56e15a9b475e811ecc80731c71139dfe5aaee5810a6f4a0"
-INTEL_SHA="141e37a747c85fbad7be5d11c97c4eacf836a210d47d8d0e850c81708c6f482e"
+ARM_SHA="816807b21ffefb6755d94106662353338b225f5f74787bb62517205345f6419a"
+INTEL_SHA="3f08e1fdb7ca4fac49d0dfdb52fbe2c794cd72892636fa7667f94bf981a1e28f"
 
 if [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = "1" ]; then
     ARCH="arm64"

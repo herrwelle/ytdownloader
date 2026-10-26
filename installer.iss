@@ -1,7 +1,7 @@
 ; YTDownloader Windows 安装脚本 (Inno Setup)
 [Setup]
 AppName=YTDownloader
-AppVersion=1.1.3
+AppVersion=1.2.0
 AppPublisher=3995 Hz
 DefaultDirName={autopf}\YTDownloader
 DefaultGroupName=YTDownloader

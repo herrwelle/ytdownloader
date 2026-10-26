@@ -61,5 +61,5 @@ app = BUNDLE(
     name='YTDownloader.app',
     icon='assets/YTDownloader.icns',
     bundle_identifier=None,
-    info_plist={'CFBundleShortVersionString': '1.1.3', 'CFBundleVersion': '1.1.3'},
+    info_plist={'CFBundleShortVersionString': '1.2.0', 'CFBundleVersion': '1.2.0'},
 )

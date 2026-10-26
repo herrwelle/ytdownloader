@@ -1,16 +1,17 @@
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import traceback
+import urllib.request
 import uuid
 from datetime import datetime
 from pathlib import Path
-
-import yt_dlp
-from yt_dlp.postprocessor.ffmpeg import FFmpegVideoConvertorPP
 
 # 跨平台日志文件：排查下载失败用
 if sys.platform == 'darwin':
@@ -30,6 +31,92 @@ def log(line):
             f.write(f'[{datetime.now():%Y-%m-%d %H:%M:%S}] {line}\n')
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# yt-dlp 运行时自更新
+# 用户数据目录中的新版 yt-dlp（及配套 ejs）优先于内置版本加载；
+# 不改动 app 本体、不影响签名，损坏时自动回退内置版本。仅打包后启用。
+# ---------------------------------------------------------------------------
+if sys.platform == 'darwin':
+    _DATA_HOME = Path.home() / 'Library' / 'Application Support' / 'YTDownloader'
+elif os.name == 'nt':
+    _DATA_HOME = Path.home() / 'AppData' / 'Local' / 'YTDownloader'
+else:
+    _DATA_HOME = Path.home() / '.local' / 'share' / 'YTDownloader'
+UPDATE_DIR = _DATA_HOME / 'lib'
+_FROZEN = bool(getattr(sys, 'frozen', False))
+
+
+def _load_ytdlp():
+    if _FROZEN and (UPDATE_DIR / 'yt_dlp').is_dir():
+        sys.path.insert(0, str(UPDATE_DIR))
+    try:
+        import yt_dlp
+    except Exception:
+        if str(UPDATE_DIR) in sys.path:
+            sys.path.remove(str(UPDATE_DIR))
+        shutil.rmtree(UPDATE_DIR, ignore_errors=True)
+        log('自动更新的 yt-dlp 加载失败，已回退内置版本')
+        import yt_dlp
+    return yt_dlp
+
+
+yt_dlp = _load_ytdlp()
+from yt_dlp.postprocessor.ffmpeg import FFmpegVideoConvertorPP
+
+
+def _ver_tuple(v):
+    return tuple(int(x) for x in re.findall(r'\d+', v or '')[:3])
+
+
+def _pypi(pkg):
+    with urllib.request.urlopen(f'https://pypi.org/pypi/{pkg}/json', timeout=15) as r:
+        data = json.load(r)
+    return data['info']['version'], data['urls']
+
+
+def check_update():
+    """后台检查新版 yt-dlp 并下载到用户目录，下次启动生效（24 小时最多检查一次）。"""
+    try:
+        _DATA_HOME.mkdir(parents=True, exist_ok=True)
+        marker = _DATA_HOME / 'lastcheck'
+        if marker.exists() and time.time() - marker.stat().st_mtime < 86400:
+            return
+        marker.touch()
+        cur = yt_dlp.version.__version__
+        latest, wheels = _pypi('yt-dlp')
+        if _ver_tuple(latest) <= _ver_tuple(cur):
+            return
+        dl = [(u['url'], u['filename']) for u in wheels
+              if u['filename'].startswith('yt_dlp-') and u['filename'].endswith('-none-any.whl')]
+        if not dl:
+            return
+        _, ejs_wheels = _pypi('yt-dlp-ejs')
+        ejs_dl = [(u['url'], u['filename']) for u in ejs_wheels
+                  if u['filename'].startswith('yt_dlp_ejs-') and u['filename'].endswith('-none-any.whl')]
+        import zipfile
+        staging = Path(tempfile.mkdtemp(prefix='ytd_update_')) / 'lib'
+        staging.mkdir()
+        for url, _fn in (dl + ejs_dl)[:2]:
+            with urllib.request.urlopen(url, timeout=120) as r, tempfile.NamedTemporaryFile(delete=False) as f:
+                shutil.copyfileobj(r, f)
+                wheel = f.name
+            with zipfile.ZipFile(wheel) as z:
+                z.extractall(staging)
+            os.unlink(wheel)
+        new_dir = UPDATE_DIR.with_name('lib.new')
+        shutil.rmtree(new_dir, ignore_errors=True)
+        shutil.move(str(staging), str(new_dir))
+        shutil.rmtree(UPDATE_DIR, ignore_errors=True)
+        shutil.move(str(new_dir), str(UPDATE_DIR))
+        log(f'yt-dlp 可更新: {cur} → {latest}（下次启动生效）')
+    except Exception as e:
+        log(f'yt-dlp 更新检查失败: {type(e).__name__}: {e}')
+
+
+if _FROZEN:
+    threading.Thread(target=check_update, daemon=True).start()
 
 # 打包后内嵌的 ffmpeg 目录（PyInstaller --add-binary），开发时回退到 bin/ 或 PATH。
 # PyInstaller 6 的 macOS .app 有两种布局：framework 包数据/二进制在 Contents/Frameworks
@@ -80,12 +167,23 @@ def _extractor_args_override(opts):
 
 
 # bgutil 插件的脚本版本检查默认 15 秒；Windows 首次运行受 Defender 扫描影响易超时，
-# 放宽到 120 秒（挂起保护仍在），并后台预热 deno 编译缓存，避免首次分析被阻塞。
-try:
-    from yt_dlp_plugins.extractor.getpot_bgutil_script import BgUtilScriptPTPBase
-    BgUtilScriptPTPBase._GET_SCRIPT_VSN_TIMEOUT = 120.0
-except Exception:
-    pass
+# 放宽到 120 秒。注意：必须等 yt-dlp 自身加载插件后再改属性——提前显式 import
+# 插件模块会与 yt-dlp 的插件加载机制冲突（重复注册导致 POT 提供者不可用）。
+_BGUTIL_PATCHED = False
+
+
+def _patch_bgutil_timeout():
+    global _BGUTIL_PATCHED
+    if _BGUTIL_PATCHED:
+        return
+    mod = sys.modules.get('yt_dlp_plugins.extractor.getpot_bgutil_script')
+    if mod is None:
+        return
+    try:
+        mod.BgUtilScriptPTPBase._GET_SCRIPT_VSN_TIMEOUT = 120.0
+        _BGUTIL_PATCHED = True
+    except Exception:
+        pass
 
 
 def _warm_bgutil():
@@ -123,18 +221,36 @@ def _is_cookie_lock_error(msg):
     return 'Could not copy' in msg and 'cookie database' in msg
 
 
-def _friendly_error(msg):
+_ERR = {
+    'bot': {
+        'zh': 'YouTube 风控拦截：当前网络 IP 被判定可疑。使用 VPN/代理的请更换节点（最好换地区，重连同一节点无效）；或将电脑连接到手机热点后重试；也可在「Cookie 来源」选择已登录 YouTube 的浏览器（Windows 需先完全退出该浏览器）',
+        'en': 'YouTube risk-control block: your network IP looks suspicious. If you are using a VPN/proxy, switch to a different node/region (reconnecting to the same node will NOT change your IP); or connect your computer to a phone hotspot; or pick a browser logged into YouTube under "Cookie source" (on Windows, fully quit the browser first).',
+    },
+    'age': {
+        'zh': '该视频有年龄限制：请在上方「Cookie 来源」选择已登录 YouTube 的浏览器后重试',
+        'en': 'Age-restricted video: pick a browser logged into YouTube under "Cookie source" above and retry.',
+    },
+    'lock': {
+        'zh': '无法读取浏览器 Cookie：浏览器正在运行，请完全退出（含后台进程）后重试；公开视频可切回「不使用」',
+        'en': 'Cannot read browser cookies: the browser is running. Fully quit it (including background processes) and retry, or switch back to "None" for public videos.',
+    },
+    'unsupported': {
+        'zh': '不支持的链接，请检查后重试',
+        'en': 'Unsupported link, please check and retry.',
+    },
+}
+
+
+def _friendly_error(msg, lang='zh'):
+    lang = lang if lang in ('zh', 'en') else 'zh'
     if 'not a bot' in msg:
-        return (
-            'YouTube 风控拦截：当前网络 IP 被判定可疑。'
-            '使用 VPN/代理的请更换节点（最好换地区，重连同一节点无效）；'
-            '或将电脑连接到手机热点后重试；'
-            '也可在「Cookie 来源」选择已登录 YouTube 的浏览器（Windows 需先完全退出该浏览器）'
-        )
+        return _ERR['bot'][lang]
     if 'Sign in to confirm your age' in msg:
-        return '该视频有年龄限制：请在上方「Cookie 来源」选择已登录 YouTube 的浏览器后重试'
+        return _ERR['age'][lang]
     if _is_cookie_lock_error(msg):
-        return '无法读取浏览器 Cookie：浏览器正在运行，请完全退出（含后台进程）后重试；公开视频可切回「不使用」'
+        return _ERR['lock'][lang]
+    if 'Unsupported URL' in msg:
+        return _ERR['unsupported'][lang]
     return msg[:500]
 
 # task_id -> {status, progress, speed, eta, filename, filepath, saved_path, error}
@@ -182,7 +298,14 @@ def _height(f):
     return h or 0
 
 
-def analyze(url, cookies_from=None):
+_LOC = {
+    'zh': {'av1': '音画合一', 'fps': '帧', 'merge': '自动合并音轨', 'mp3sub': '最佳音质自动转换 · 通用性最好', 'untitled': '未知标题'},
+    'en': {'av1': 'audio + video in one', 'fps': ' fps', 'merge': 'audio auto-merged', 'mp3sub': 'Best quality, auto-converted', 'untitled': 'Untitled'},
+}
+
+
+def analyze(url, cookies_from=None, lang='zh'):
+    t = _LOC[lang if lang in _LOC else 'zh']
     opts = {
         'quiet': True,
         'no_warnings': True,
@@ -194,6 +317,7 @@ def analyze(url, cookies_from=None):
     _extractor_args_override(opts)
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
+            _patch_bgutil_timeout()
             info = ydl.extract_info(url, download=False)
     except Exception as e:
         # 浏览器锁定 Cookie 数据库时（Windows 常见），自动去掉 Cookie 重试一次
@@ -201,6 +325,7 @@ def analyze(url, cookies_from=None):
             log(f'Cookie 数据库被锁，自动回退无 Cookie 分析: {str(e)[:120]}')
             opts.pop('cookiesfrombrowser', None)
             with yt_dlp.YoutubeDL(opts) as ydl:
+                _patch_bgutil_timeout()
                 info = ydl.extract_info(url, download=False)
         else:
             raise
@@ -223,7 +348,7 @@ def analyze(url, cookies_from=None):
             progressive.append({
                 'id': f.get('format_id'),
                 'label': f'{h}p',
-                'sub': f'{ext.upper()} · 音画合一' + (f" · {int(f['fps'])}帧" if f.get('fps') and f['fps'] > 30 else ''),
+                'sub': f'{ext.upper()} · {t["av1"]}' + (f" · {int(f['fps'])}{t['fps']}" if f.get('fps') and f['fps'] > 30 else ''),
                 'size': size,
                 'spec': str(f.get('format_id')),
                 'mode': 'video',
@@ -244,8 +369,8 @@ def analyze(url, cookies_from=None):
             )
             video.append({
                 'id': f.get('format_id'),
-                'label': f'{h}p{mark}' + (f' · {int(fps)}帧' if fps > 30 else ''),
-                'sub': f'{"MP4" if container == "mp4" else "MKV"} · {codec} · 自动合并音轨',
+                'label': f'{h}p{mark}' + (f" · {int(fps)}{t['fps']}" if fps > 30 else ''),
+                'sub': f'{"MP4" if container == "mp4" else "MKV"} · {codec} · {t["merge"]}',
                 'size': size,
                 'spec': f'{audio_spec}/{f.get("format_id")}',
                 'mode': 'video',
@@ -300,14 +425,14 @@ def analyze(url, cookies_from=None):
     audio.insert(0, {
         'id': 'mp3',
         'label': 'MP3',
-        'sub': '最佳音质自动转换 · 通用性最好',
+        'sub': t['mp3sub'],
         'size': None,
         'spec': 'bestaudio/bestaudio*',
         'mode': 'mp3',
     })
 
     return {
-        'title': info.get('title') or '未知标题',
+        'title': info.get('title') or t['untitled'],
         'uploader': info.get('uploader') or info.get('channel') or '',
         'duration': duration,
         'thumbnail': info.get('thumbnail') or '',
@@ -358,7 +483,7 @@ def _hook(task_id, d):
         task.update({'status': 'processing', 'progress': 100})
 
 
-def _download(task_id, url, spec, mode, container=None, cookies_from=None):
+def _download(task_id, url, spec, mode, container=None, cookies_from=None, lang='zh'):
     task = TASKS[task_id]
     outdir = tempfile.mkdtemp(prefix='ytdl_')
     opts = {
@@ -385,6 +510,7 @@ def _download(task_id, url, spec, mode, container=None, cookies_from=None):
         }]
     def _open_ydl(o):
         ydl = yt_dlp.YoutubeDL(o)
+        _patch_bgutil_timeout()
         if container == 'transcode':
             ydl.add_post_processor(_TranscodeMp4PP(preferedformat='mp4'))
         return ydl
@@ -444,17 +570,17 @@ def _download(task_id, url, spec, mode, container=None, cookies_from=None):
             })
         log(f'成功: {task.get("filename")}')
     except Exception as e:
-        task.update({'status': 'error', 'error': _friendly_error(str(e))})
+        task.update({'status': 'error', 'error': _friendly_error(str(e), lang)})
         log(f'失败: {type(e).__name__}: {e}\n{traceback.format_exc()}')
         shutil.rmtree(outdir, ignore_errors=True)
 
 
-def start_download(url, spec, mode, container=None, cookies_from=None):
+def start_download(url, spec, mode, container=None, cookies_from=None, lang='zh'):
     task_id = uuid.uuid4().hex[:12]
     TASKS[task_id] = {'status': 'starting', 'progress': 0}
     threading.Thread(
         target=_download,
-        args=(task_id, url, spec, mode, container, cookies_from),
+        args=(task_id, url, spec, mode, container, cookies_from, lang),
         daemon=True,
     ).start()
     return task_id

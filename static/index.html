@@ -26,9 +26,15 @@
   }
   .wrap { max-width: 720px; margin: 0 auto; }
 
-  header { text-align: center; margin-bottom: 32px; }
+  header { text-align: center; margin-bottom: 32px; position: relative; }
   header h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
   header p { color: var(--muted); font-size: 14px; margin-top: 6px; }
+  #langBtn {
+    position: absolute; right: 0; top: 4px;
+    border: 1px solid var(--line); background: var(--card); color: var(--muted);
+    font-size: 12px; font-weight: 600; border-radius: 8px; padding: 4px 10px; cursor: pointer;
+  }
+  #langBtn:hover { color: var(--text); background: #f2f2f7; }
 
   .search {
     display: flex; gap: 10px;
@@ -164,8 +170,9 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>视频下载器</h1>
-    <p>粘贴链接，选择格式下载 · 支持 YouTube、Bilibili 等数千个站点</p>
+    <button id="langBtn" onclick="toggleLang()">EN</button>
+    <h1 id="h1">视频下载器</h1>
+    <p id="subtitle">粘贴链接，选择格式下载 · 支持 YouTube、Bilibili 等数千个站点</p>
   </header>
 
   <div class="search">
@@ -173,26 +180,26 @@
     <button class="btn" id="analyzeBtn" onclick="analyze()">分析</button>
   </div>
   <div class="cookies">
-    <label for="cookieBrowser">Cookie 来源</label>
+    <label for="cookieBrowser" id="cookieLabel">Cookie 来源</label>
     <select id="cookieBrowser" onchange="saveCookieChoice()">
-      <option value="">不使用（公开视频）</option>
+      <option value="" id="optNone">不使用（公开视频）</option>
       <option value="chrome">Chrome</option>
       <option value="edge">Edge</option>
-      <option value="safari">Safari（需完全磁盘访问）</option>
+      <option value="safari" id="optSafari">Safari（需完全磁盘访问）</option>
       <option value="firefox">Firefox</option>
       <option value="brave">Brave</option>
       <option value="chromium">Chromium</option>
       <option value="opera">Opera</option>
       <option value="vivaldi">Vivaldi</option>
     </select>
-    <span class="hint">年龄限制 / 需登录的视频请选择已登录 YouTube 的浏览器</span>
+    <span class="hint" id="cookieHint">年龄限制 / 需登录的视频请选择已登录 YouTube 的浏览器</span>
   </div>
   <div class="msg" id="msg"></div>
 
   <div id="ctxmenu">
-    <div class="ctx-item" onclick="doPaste(event)">粘贴</div>
-    <div class="ctx-item" onclick="doClear()">清空</div>
-    <div class="ctx-hint">也可直接按 ⌘V 粘贴</div>
+    <div class="ctx-item" onclick="doPaste(event)" id="ctxPaste">粘贴</div>
+    <div class="ctx-item" onclick="doClear()" id="ctxClear">清空</div>
+    <div class="ctx-hint" id="ctxHint">也可直接按 ⌘V 粘贴</div>
   </div>
 
   <div class="result" id="result">
@@ -215,21 +222,100 @@
       </div>
       <label class="transcode-opt" id="transcodeWrap" style="display:none">
         <input type="checkbox" id="transcodeChk">
-        转码为通用 MP4（H.264，兼容性最好 · 需重新编码，速度较慢）
+        <span id="transcodeText">转码为通用 MP4（H.264，兼容性最好 · 需重新编码，速度较慢）</span>
       </label>
       <button class="btn" id="dlBtn" onclick="startDownload()" disabled>下载</button>
     </div>
   </div>
 
-  <footer>3995 Hz · 仅供个人学习使用，请尊重版权
-    <div style="margin-top:4px">v1.1.3</div>
+  <footer><span id="footerText">3995 Hz · 仅供个人学习使用，请尊重版权</span>
+    <div style="margin-top:4px">v1.2.0</div>
   </footer>
 </div>
 
 <script>
 const $ = id => document.getElementById(id);
 const IS_MAC = (navigator.platform || navigator.userAgent).toLowerCase().includes('mac');
-let state = { url: null, selected: null, polling: null };
+
+const I18N = {
+  zh: {
+    title: '视频下载器', subtitle: '粘贴链接，选择格式下载 · 支持 YouTube、Bilibili 等数千个站点',
+    placeholder: '粘贴视频链接', analyze: '分析', analyzing: '分析中…',
+    cookieLabel: 'Cookie 来源', cookieNone: '不使用（公开视频）', cookieSafari: 'Safari（需完全磁盘访问）',
+    cookieHint: '年龄限制 / 需登录的视频请选择已登录 YouTube 的浏览器',
+    paste: '粘贴', clear: '清空', pasteHintMac: '也可直接按 ⌘V 粘贴', pasteHintWin: '也可直接按 Ctrl+V 粘贴',
+    groupProgressive: '视频 · 含声音（即下即播）',
+    groupVideo: '超清 · 1080p / 4K / 8K（自动合并音轨）',
+    groupAudio: '音频',
+    transcode: '转码为通用 MP4（H.264，兼容性最好 · 需重新编码，速度较慢）',
+    download: '下载', preparing: '准备中…', preparingStatus: '正在准备…',
+    downloading: '下载中', merging: '正在合并音轨…',
+    converting: '正在转码为通用 MP4…（视分辨率可能需要几分钟）',
+    doneSaved: '完成 · 已保存到「下载」文件夹', reveal: '在 Finder 中显示', openDownloads: '下载',
+    doneBrowser: '完成 · 浏览器已开始下载', doneBtn: '已完成，可继续选其他格式',
+    failed: '下载失败', retry: '重试', unknownErr: '未知错误', eta: '剩余',
+    analyzeFail: '分析失败', startFail: '启动下载失败',
+    connErr: '无法连接本地服务，请检查服务是否在运行',
+    footer: '3995 Hz · 仅供个人学习使用，请尊重版权',
+  },
+  en: {
+    title: 'Video Downloader', subtitle: 'Paste a link, pick a format · Supports YouTube, Bilibili and thousands of sites',
+    placeholder: 'Paste a video link', analyze: 'Analyze', analyzing: 'Analyzing…',
+    cookieLabel: 'Cookie source', cookieNone: 'None (public videos)', cookieSafari: 'Safari (needs Full Disk Access)',
+    cookieHint: 'For age-restricted / login-required videos, pick a browser logged into YouTube',
+    paste: 'Paste', clear: 'Clear', pasteHintMac: 'Or press ⌘V to paste', pasteHintWin: 'Or press Ctrl+V to paste',
+    groupProgressive: 'Video · with audio (ready to play)',
+    groupVideo: 'UHD · 1080p / 4K / 8K (audio auto-merged)',
+    groupAudio: 'Audio',
+    transcode: 'Transcode to universal MP4 (H.264, best compatibility · re-encoding, slower)',
+    download: 'Download', preparing: 'Preparing…', preparingStatus: 'Preparing…',
+    downloading: 'Downloading', merging: 'Merging audio…',
+    converting: 'Transcoding to universal MP4… (may take a few minutes)',
+    doneSaved: 'Done · saved to your Downloads folder', reveal: 'Reveal in Finder', openDownloads: 'Show in folder',
+    doneBrowser: 'Done · browser download started', doneBtn: 'Done — you can pick another format',
+    failed: 'Download failed', retry: 'Retry', unknownErr: 'Unknown error', eta: 'left',
+    analyzeFail: 'Analyze failed', startFail: 'Failed to start download',
+    connErr: 'Cannot reach the local service, please check if it is running',
+    footer: '3995 Hz · For personal use only. Please respect copyright.',
+  },
+};
+
+let LANG = 'zh';
+try {
+  const saved = localStorage.getItem('ytdl.lang');
+  if (saved === 'zh' || saved === 'en') LANG = saved;
+  else if (!(navigator.language || 'zh').toLowerCase().startsWith('zh')) LANG = 'en';
+} catch (e) {}
+const T = k => I18N[LANG][k] != null ? I18N[LANG][k] : I18N.zh[k];
+
+function applyLang() {
+  document.title = T('title');
+  document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
+  $('h1').textContent = T('title');
+  $('subtitle').textContent = T('subtitle');
+  $('url').placeholder = T('placeholder');
+  $('analyzeBtn').textContent = T('analyze');
+  $('cookieLabel').textContent = T('cookieLabel');
+  $('optNone').textContent = T('cookieNone');
+  const safariOpt = $('optSafari');
+  if (safariOpt) safariOpt.textContent = T('cookieSafari');
+  $('cookieHint').textContent = T('cookieHint');
+  $('ctxPaste').textContent = T('paste');
+  $('ctxClear').textContent = T('clear');
+  $('ctxHint').textContent = T(IS_MAC ? 'pasteHintMac' : 'pasteHintWin');
+  $('transcodeText').textContent = T('transcode');
+  $('dlBtn').textContent = T('download');
+  $('footerText').textContent = T('footer');
+  $('langBtn').textContent = LANG === 'zh' ? 'EN' : '中文';
+}
+function toggleLang() {
+  LANG = LANG === 'zh' ? 'en' : 'zh';
+  try { localStorage.setItem('ytdl.lang', LANG); } catch (e) {}
+  applyLang();
+  if (state.lastData) render(state.lastData);
+}
+
+let state = { url: null, selected: null, polling: null, lastData: null };
 
 function showMsg(text) {
   const m = $('msg');
@@ -259,7 +345,7 @@ function fmtSpeed(b) {
 function fmtEta(s) {
   if (s == null) return '';
   const m = Math.floor(s / 60), sec = Math.round(s % 60);
-  return `剩余 ${m}:${String(sec).padStart(2, '0')}`;
+  return LANG === 'zh' ? `剩余 ${m}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')} left`;
 }
 function cookieBrowser() {
   const v = $('cookieBrowser').value;
@@ -284,28 +370,29 @@ async function analyze() {
   if (!url) { $('url').focus(); return; }
   clearMsg();
   const btn = $('analyzeBtn');
-  btn.disabled = true; btn.textContent = '分析中…';
+  btn.disabled = true; btn.textContent = T('analyzing');
   $('result').style.display = 'none';
   stopPolling();
   try {
     const res = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, cookies_from: cookieBrowser() }),
+      body: JSON.stringify({ url, cookies_from: cookieBrowser(), lang: LANG }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || '分析失败');
+    if (!res.ok) throw new Error(data.detail || T('analyzeFail'));
     state.url = url;
     render(data);
   } catch (e) {
-    showMsg(e.message.includes('Failed to fetch') ? '无法连接本地服务，请检查服务是否在运行' : e.message);
+    showMsg(e.message.includes('Failed to fetch') ? T('connErr') : e.message);
   } finally {
-    btn.disabled = false; btn.textContent = '分析';
+    btn.disabled = false; btn.textContent = T('analyze');
   }
 }
 
 function render(d) {
   clearMsg();
+  state.lastData = d;
   $('thumb').src = d.thumbnail;
   $('thumb').style.visibility = 'visible';
   $('vTitle').textContent = d.title;
@@ -313,12 +400,13 @@ function render(d) {
   $('vDuration').textContent = fmtDur(d.duration);
 
   const groups = [
-    ['视频 · 含声音（即下即播）', d.progressive],
-    ['超清 · 1080p / 4K / 8K（自动合并音轨）', d.video],
-    ['音频', d.audio],
+    [T('groupProgressive'), d.progressive],
+    [T('groupVideo'), d.video],
+    [T('groupAudio'), d.audio],
   ];
   const g = $('groups');
   g.innerHTML = '';
+  let firstVideo = null, firstProgressive = null, firstAudio = null;
   for (const [title, list] of groups) {
     if (!list || !list.length) continue;
     const h = document.createElement('div');
@@ -346,16 +434,22 @@ function render(d) {
         if (showTranscode) $('transcodeChk').checked = false;
         resetProgress();
       };
+      if (list === d.video && !firstVideo) firstVideo = label;
+      if (list === d.progressive && !firstProgressive) firstProgressive = label;
+      if (list === d.audio && !firstAudio) firstAudio = label;
       g.appendChild(label);
     }
   }
   state.selected = null;
   $('transcodeWrap').style.display = 'none';
   $('dlBtn').disabled = true;
-  $('dlBtn').textContent = '下载';
+  $('dlBtn').textContent = T('download');
   $('action').style.display = 'block';
   $('progress').style.display = 'none';
   $('result').style.display = 'block';
+  // 大道至简：自动预选最佳格式（优先超清组最高画质），用户直接点下载即可
+  const best = firstVideo || firstProgressive || firstAudio;
+  if (best) best.onclick();
   $('result').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
@@ -366,7 +460,7 @@ function resetProgress() {
   $('bar').classList.remove('indeterminate');
   $('fill').style.width = '0%';
   $('dlBtn').disabled = false;
-  $('dlBtn').textContent = '下载';
+  $('dlBtn').textContent = T('download');
 }
 
 async function startDownload() {
@@ -384,14 +478,15 @@ async function startDownload() {
         mode: state.selected.mode,
         container: $('transcodeChk').checked && state.selected.container === 'mkv' ? 'transcode' : state.selected.container,
         cookies_from: cookieBrowser(),
+        lang: LANG,
       }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || '启动下载失败');
-    btn.textContent = '准备中…';
+    if (!res.ok) throw new Error(data.detail || T('startFail'));
+    btn.textContent = T('preparing');
     $('progress').style.display = 'block';
     $('bar').classList.add('indeterminate');
-    $('status').textContent = '正在准备…';
+    $('status').textContent = T('preparingStatus');
     $('pdetail').textContent = '';
     poll(data.task_id);
   } catch (e) {
@@ -413,39 +508,39 @@ function poll(taskId) {
     if (t.status === 'downloading') {
       $('bar').classList.remove('indeterminate');
       $('fill').style.width = (t.progress || 0) + '%';
-      st.textContent = '下载中 ' + (t.progress || 0) + '%';
+      st.textContent = T('downloading') + ' ' + (t.progress || 0) + '%';
       st.className = 'status';
       pd.textContent = [fmtSpeed(t.speed), fmtEta(t.eta)].filter(Boolean).join(' · ');
     } else if (t.status === 'processing') {
       $('bar').classList.add('indeterminate');
-      st.textContent = '正在合并音轨…';
+      st.textContent = T('merging');
       pd.textContent = '';
     } else if (t.status === 'converting') {
       $('bar').classList.add('indeterminate');
-      st.textContent = '正在转码为通用 MP4…（视分辨率可能需要几分钟）';
+      st.textContent = T('converting');
       pd.textContent = '';
     } else if (t.status === 'done') {
       stopPolling();
       $('bar').style.display = 'none';
       if (t.saved_path) {
-        st.textContent = '完成 · 已保存到「下载」文件夹';
+        st.textContent = T('doneSaved');
         st.className = 'status done';
-        pd.innerHTML = `<a href="#" title="${esc(t.filename)}" style="color:#3a3a3c;text-decoration:underline" onclick="reveal('${taskId}');return false">${esc(truncateName(t.filename, 46))} · ${IS_MAC ? '在 Finder 中显示' : '下载'}</a>`;
+        pd.innerHTML = `<a href="#" title="${esc(t.filename)}" style="color:#3a3a3c;text-decoration:underline" onclick="reveal('${taskId}');return false">${esc(truncateName(t.filename, 46))} · ${IS_MAC ? T('reveal') : T('openDownloads')}</a>`;
       } else {
-        st.textContent = '完成 · 浏览器已开始下载';
+        st.textContent = T('doneBrowser');
         st.className = 'status done';
         pd.textContent = '';
         window.location.href = '/api/file/' + taskId;
       }
-      $('dlBtn').textContent = '已完成，可继续选其他格式';
+      $('dlBtn').textContent = T('doneBtn');
       $('dlBtn').disabled = false;
     } else if (t.status === 'error') {
       stopPolling();
-      st.textContent = '下载失败';
+      st.textContent = T('failed');
       st.className = 'status err';
       pd.textContent = '';
-      showMsg(t.error || '未知错误');
-      $('dlBtn').textContent = '重试';
+      showMsg(t.error || T('unknownErr'));
+      $('dlBtn').textContent = T('retry');
       $('dlBtn').disabled = false;
     }
   }, 400);
@@ -481,7 +576,7 @@ $('url').addEventListener('contextmenu', e => {
   ctxMenu.style.left = x + 'px';
   ctxMenu.style.top = y + 'px';
 });
-document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
+document.addEventListener('click', () => ctxMenu.style.display = 'none');
 document.addEventListener('keydown', e => { if (e.key === 'Escape') ctxMenu.style.display = 'none'; });
 
 async function doPaste(e) {
@@ -505,6 +600,8 @@ function doClear() {
   $('url').value = '';
   $('url').focus();
 }
+
+applyLang();
 </script>
 </body>
 </html>

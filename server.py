@@ -19,6 +19,7 @@ app = FastAPI(title='yt-dlp 本地下载器')
 class AnalyzeReq(BaseModel):
     url: str
     cookies_from: str | None = None
+    lang: str = 'zh'
 
 
 class DownloadReq(BaseModel):
@@ -27,30 +28,33 @@ class DownloadReq(BaseModel):
     mode: str = 'video'
     container: str | None = None
     cookies_from: str | None = None
+    lang: str = 'zh'
 
 
 def _cookies(value):
     return value if value in downloader.COOKIE_BROWSERS else None
 
 
+def _lang(value):
+    return value if value in ('zh', 'en') else 'zh'
+
+
 @app.post('/api/analyze')
 def analyze(req: AnalyzeReq):
     url = req.url.strip()
     if not url:
-        raise HTTPException(400, '请输入链接')
+        raise HTTPException(400, '请输入链接 / Please enter a link')
     try:
-        return downloader.analyze(url, _cookies(req.cookies_from))
+        return downloader.analyze(url, _cookies(req.cookies_from), _lang(req.lang))
     except Exception as e:
-        msg = downloader._friendly_error(str(e))
-        if 'Unsupported URL' in msg:
-            msg = '不支持的链接，请检查后重试'
-        raise HTTPException(400, msg)
+        raise HTTPException(400, downloader._friendly_error(str(e), _lang(req.lang)))
 
 
 @app.post('/api/download')
 def download(req: DownloadReq):
     task_id = downloader.start_download(
-        req.url.strip(), req.spec, req.mode, req.container, _cookies(req.cookies_from))
+        req.url.strip(), req.spec, req.mode, req.container,
+        _cookies(req.cookies_from), _lang(req.lang))
     return {'task_id': task_id}
 
 
