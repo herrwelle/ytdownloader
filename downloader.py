@@ -238,6 +238,10 @@ _ERR = {
         'zh': '不支持的链接，请检查后重试',
         'en': 'Unsupported link, please check and retry.',
     },
+    'bili': {
+        'zh': 'B 站风控/区域限制：请在正常国内网络下重试，或在「Cookie 来源」选择已登录 B 站的浏览器（1080P 及以上需要登录）',
+        'en': 'Bilibili risk-control / region restriction: retry on a normal network, or pick a browser logged into Bilibili under "Cookie source" (1080p+ requires login).',
+    },
 }
 
 
@@ -251,6 +255,8 @@ def _friendly_error(msg, lang='zh'):
         return _ERR['lock'][lang]
     if 'Unsupported URL' in msg:
         return _ERR['unsupported'][lang]
+    if 'Unable to extract initial state' in msg or ('geo-restricted' in msg and 'BiliBili' in msg):
+        return _ERR['bili'][lang]
     return msg[:500]
 
 # task_id -> {status, progress, speed, eta, filename, filepath, saved_path, error}
