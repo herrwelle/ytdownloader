@@ -229,7 +229,7 @@
   </div>
 
   <footer><span id="footerText">3995 Hz · 仅供个人学习使用，请尊重版权</span>
-    <div style="margin-top:4px">v1.2.1</div>
+    <div style="margin-top:4px">v1.2.2</div>
   </footer>
 </div>
 
@@ -254,6 +254,7 @@ const I18N = {
     doneSaved: '完成 · 已保存到「下载」文件夹', reveal: '在 Finder 中显示', openDownloads: '下载',
     doneBrowser: '完成 · 浏览器已开始下载', doneBtn: '已完成，可继续选其他格式',
     failed: '下载失败', retry: '重试', unknownErr: '未知错误', eta: '剩余',
+    reanalyze: '链接或 Cookie 已改变，请重新分析后选择格式',
     analyzeFail: '分析失败', startFail: '启动下载失败',
     connErr: '无法连接本地服务，请检查服务是否在运行',
     footer: '3995 Hz · 仅供个人学习使用，请尊重版权',
@@ -274,6 +275,7 @@ const I18N = {
     doneSaved: 'Done · saved to your Downloads folder', reveal: 'Reveal in Finder', openDownloads: 'Show in folder',
     doneBrowser: 'Done · browser download started', doneBtn: 'Done — you can pick another format',
     failed: 'Download failed', retry: 'Retry', unknownErr: 'Unknown error', eta: 'left',
+    reanalyze: 'Link or Cookie source changed. Analyze again and choose a format.',
     analyzeFail: 'Analyze failed', startFail: 'Failed to start download',
     connErr: 'Cannot reach the local service, please check if it is running',
     footer: '3995 Hz · For personal use only. Please respect copyright.',
@@ -315,7 +317,7 @@ function toggleLang() {
   if (state.lastData) render(state.lastData);
 }
 
-let state = { url: null, selected: null, polling: null, lastData: null };
+let state = { url: null, cookie: null, selected: null, polling: null, lastData: null };
 
 function showMsg(text) {
   const m = $('msg');
@@ -353,6 +355,16 @@ function cookieBrowser() {
 }
 function saveCookieChoice() {
   try { localStorage.setItem('ytdl.cookieBrowser', $('cookieBrowser').value); } catch (e) {}
+  invalidateAnalysis();
+}
+function invalidateAnalysis() {
+  if (!state.url || ($('url').value.trim() === state.url && cookieBrowser() === state.cookie)) return;
+  state.url = null;
+  state.selected = null;
+  state.lastData = null;
+  $('dlBtn').disabled = true;
+  if (!state.polling) $('result').style.display = 'none';
+  showMsg(T('reanalyze'));
 }
 function esc(s) {
   return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -368,20 +380,28 @@ function truncateName(name, max) {
 async function analyze() {
   const url = $('url').value.trim();
   if (!url) { $('url').focus(); return; }
+  const cookie = cookieBrowser();
   clearMsg();
   const btn = $('analyzeBtn');
   btn.disabled = true; btn.textContent = T('analyzing');
   $('result').style.display = 'none';
   stopPolling();
+  state.url = null;
+  state.selected = null;
   try {
     const res = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, cookies_from: cookieBrowser(), lang: LANG }),
+      body: JSON.stringify({ url, cookies_from: cookie, lang: LANG }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || T('analyzeFail'));
+    if ($('url').value.trim() !== url || cookieBrowser() !== cookie) {
+      showMsg(T('reanalyze'));
+      return;
+    }
     state.url = url;
+    state.cookie = cookie;
     render(data);
   } catch (e) {
     showMsg(e.message.includes('Failed to fetch') ? T('connErr') : e.message);
@@ -428,7 +448,7 @@ function render(d) {
         label.classList.add('selected');
         label.querySelector('input').checked = true;
         state.selected = { spec: f.spec, mode: f.mode, container: f.container || null };
-        $('dlBtn').disabled = false;
+        $('dlBtn').disabled = !state.url;
         const showTranscode = f.mode === 'video' && f.container === 'mkv';
         $('transcodeWrap').style.display = showTranscode ? 'flex' : 'none';
         if (showTranscode) $('transcodeChk').checked = false;
@@ -459,12 +479,16 @@ function resetProgress() {
   $('bar').style.display = '';
   $('bar').classList.remove('indeterminate');
   $('fill').style.width = '0%';
-  $('dlBtn').disabled = false;
+  $('dlBtn').disabled = !state.url;
   $('dlBtn').textContent = T('download');
 }
 
 async function startDownload() {
   if (!state.selected || !state.url) return;
+  if ($('url').value.trim() !== state.url || cookieBrowser() !== state.cookie) {
+    invalidateAnalysis();
+    return;
+  }
   clearMsg();
   const btn = $('dlBtn');
   btn.disabled = true;
@@ -491,7 +515,7 @@ async function startDownload() {
     poll(data.task_id);
   } catch (e) {
     showMsg(e.message);
-    btn.disabled = false;
+    btn.disabled = !state.url;
   }
 }
 
@@ -533,7 +557,7 @@ function poll(taskId) {
         window.location.href = '/api/file/' + taskId;
       }
       $('dlBtn').textContent = T('doneBtn');
-      $('dlBtn').disabled = false;
+      $('dlBtn').disabled = !state.url;
     } else if (t.status === 'error') {
       stopPolling();
       st.textContent = T('failed');
@@ -541,7 +565,7 @@ function poll(taskId) {
       pd.textContent = '';
       showMsg(t.error || T('unknownErr'));
       $('dlBtn').textContent = T('retry');
-      $('dlBtn').disabled = false;
+      $('dlBtn').disabled = !state.url;
     }
   }, 400);
 }
@@ -555,6 +579,7 @@ async function reveal(taskId) {
 }
 
 $('url').addEventListener('keydown', e => { if (e.key === 'Enter') analyze(); });
+$('url').addEventListener('input', invalidateAnalysis);
 
 if (!IS_MAC) {
   const safariOpt = document.querySelector('#cookieBrowser option[value="safari"]');
@@ -592,12 +617,13 @@ async function doPaste(e) {
   if (!text) {
     try { text = await navigator.clipboard.readText(); } catch (err) {}
   }
-  if (text) { input.value = text.trim(); input.focus(); }
+  if (text) { input.value = text.trim(); invalidateAnalysis(); input.focus(); }
   else { input.focus(); }
 }
 function doClear() {
   ctxMenu.style.display = 'none';
   $('url').value = '';
+  invalidateAnalysis();
   $('url').focus();
 }
 

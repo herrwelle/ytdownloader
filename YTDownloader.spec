@@ -1,9 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 from PyInstaller.utils.hooks import copy_metadata
+import platform
 
-datas = [('static', 'static'), ('assets/YTDownloader.icns', '.'), ('/Users/bowang/Desktop/YT/.pot-stage/bgutil-server', 'bgutil/server')]
-binaries = [('bin/ffmpeg', '.'), ('bin/ffprobe', '.'), ('/Users/bowang/Desktop/YT/.pot-stage/deno-rarm64/deno', 'deno')]
+intel = platform.machine() == 'x86_64'
+ffmpeg_dir = 'bin-intel' if intel else 'bin'
+deno_dir = 'deno-rx86_64' if intel else 'deno-rarm64'
+datas = [('static', 'static'), ('assets/YTDownloader.icns', '.'), ('.pot-stage/bgutil-server', 'bgutil/server')]
+binaries = [(f'{ffmpeg_dir}/ffmpeg', '.'), (f'{ffmpeg_dir}/ffprobe', '.'), (f'.pot-stage/{deno_dir}/deno', 'deno')]
 hiddenimports = ['webview.platforms.wkwebview']
 datas += copy_metadata('bgutil-ytdlp-pot-provider')
 tmp_ret = collect_all('yt_dlp')
@@ -11,6 +15,8 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('yt_dlp_plugins')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('yt_dlp_ejs')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('curl_cffi')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
@@ -61,5 +67,5 @@ app = BUNDLE(
     name='YTDownloader.app',
     icon='assets/YTDownloader.icns',
     bundle_identifier=None,
-    info_plist={'CFBundleShortVersionString': '1.2.1', 'CFBundleVersion': '1.2.1'},
+    info_plist={'CFBundleShortVersionString': '1.2.2', 'CFBundleVersion': '1.2.2'},
 )

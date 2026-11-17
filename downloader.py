@@ -12,6 +12,7 @@ import urllib.request
 import uuid
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 # 跨平台日志文件：排查下载失败用
 if sys.platform == 'darwin':
@@ -166,6 +167,13 @@ def _extractor_args_override(opts):
         }
 
 
+def _apply_youtube_request_options(opts, url):
+    host = (urlsplit(url).hostname or '').lower()
+    if host == 'youtube.com' or host.endswith('.youtube.com') or host == 'youtu.be':
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+        opts['impersonate'] = ImpersonateTarget('chrome')
+
+
 # bgutil 插件的脚本版本检查默认 15 秒；Windows 首次运行受 Defender 扫描影响易超时，
 # 放宽到 120 秒。注意：必须等 yt-dlp 自身加载插件后再改属性——提前显式 import
 # 插件模块会与 yt-dlp 的插件加载机制冲突（重复注册导致 POT 提供者不可用）。
@@ -242,6 +250,14 @@ _ERR = {
         'zh': 'B 站风控/区域限制：请在正常国内网络下重试，或在「Cookie 来源」选择已登录 B 站的浏览器（1080P 及以上需要登录）',
         'en': 'Bilibili risk-control / region restriction: retry on a normal network, or pick a browser logged into Bilibili under "Cookie source" (1080p+ requires login).',
     },
+    'stream403': {
+        'zh': '视频流被服务器拒绝（HTTP 403）。请稍后重试，或更换 Cookie 来源。',
+        'en': 'Video stream denied (HTTP 403). Try again later or change the Cookie source.',
+    },
+    'format': {
+        'zh': '所选格式已不可用，请重新分析链接后再选格式。',
+        'en': 'Selected format is unavailable. Analyze the link again and choose a format.',
+    },
 }
 
 
@@ -257,6 +273,10 @@ def _friendly_error(msg, lang='zh'):
         return _ERR['unsupported'][lang]
     if 'Unable to extract initial state' in msg or ('geo-restricted' in msg and 'BiliBili' in msg):
         return _ERR['bili'][lang]
+    if 'HTTP Error 403' in msg:
+        return _ERR['stream403'][lang]
+    if 'Requested format is not available' in msg:
+        return _ERR['format'][lang]
     return msg[:500]
 
 # task_id -> {status, progress, speed, eta, filename, filepath, saved_path, error}
@@ -320,6 +340,7 @@ def analyze(url, cookies_from=None, lang='zh'):
         'socket_timeout': 20,
     }
     _apply_cookies(opts, cookies_from)
+    _apply_youtube_request_options(opts, url)
     _extractor_args_override(opts)
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -499,6 +520,7 @@ def _download(task_id, url, spec, mode, container=None, cookies_from=None, lang=
         'quiet': True,
         'no_warnings': True,
         'concurrent_fragment_downloads': 4,
+        'skip_unavailable_fragments': False,
         'progress_hooks': [lambda d: _hook(task_id, d)],
         'postprocessor_hooks': [_pp_hook(task_id)],
     }
@@ -507,6 +529,7 @@ def _download(task_id, url, spec, mode, container=None, cookies_from=None, lang=
     if FFMPEG_LOCATION:
         opts['ffmpeg_location'] = FFMPEG_LOCATION
     _apply_cookies(opts, cookies_from)
+    _apply_youtube_request_options(opts, url)
     _extractor_args_override(opts)
     if mode == 'mp3':
         opts['postprocessors'] = [{
@@ -534,17 +557,6 @@ def _download(task_id, url, spec, mode, container=None, cookies_from=None, lang=
                 fallback_opts = dict(opts)
                 fallback_opts.pop('cookiesfrombrowser', None)
                 with _open_ydl(fallback_opts) as ydl:
-                    ydl.download([url])
-            elif 'HTTP Error 403' in msg:
-                # YouTube 风控拒绝当前客户端，换 tv 客户端重试（无需 PO token）
-                log(f'403 被拒，改用 tv 客户端重试: {msg[:150]}')
-                retry_opts = dict(opts)
-                retry_args = dict(opts.get('extractor_args') or {})
-                yt_args = dict(retry_args.get('youtube') or {})
-                yt_args['player_client'] = ['tv']
-                retry_args['youtube'] = yt_args
-                retry_opts['extractor_args'] = retry_args
-                with _open_ydl(retry_opts) as ydl:
                     ydl.download([url])
             elif mode == 'video' and 'Conversion failed' in msg:
                 # 封装器拒绝该编码组合时换备用容器重试（已下载的流会复用）：默认 mp4 → 改试 mkv；mkv/transcode → 改试 mp4

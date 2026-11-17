@@ -1,5 +1,6 @@
 fastapi>=0.110
 uvicorn>=0.29
-yt-dlp[default]>=2024.10.7
+yt-dlp[default]>=2026.10.26
+curl_cffi==0.17.0
 pywebview>=5.0
 bgutil-ytdlp-pot-provider==2.0.2

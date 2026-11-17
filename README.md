@@ -17,6 +17,7 @@ This app is built for people who **don't want to understand formats, codecs or o
 
 - MP4 (H.264 + AAC) and MKV (VP9/AV1 + Opus) output, up to 4K/60fps/HDR
 - Built-in PO Token support (bgutil + Deno) for high-bitrate formats
+- Chrome request impersonation for YouTube streams; analysis and download use the same request settings
 - Browser cookie support for age-restricted / login-required videos (Chrome / Edge / Safari / Firefox / Brave / …)
 - Bilingual UI (中文 / English), auto-detected from your system
 - Native window (WKWebView / WebView2), one-click reveal of finished files

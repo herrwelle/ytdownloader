@@ -17,6 +17,7 @@ English | **[简体中文](README.md)**
 
 - MP4（H.264 + AAC）与 MKV（VP9/AV1 + Opus）输出，最高 4K / 60fps / HDR
 - 内置 PO Token 支持（bgutil + Deno），高码率格式不再受限
+- YouTube 视频流使用 Chrome 请求指纹；分析与下载采用同一请求设置
 - 浏览器 Cookie 支持：年龄限制 / 需登录视频（Chrome / Edge / Safari / Firefox / Brave 等）
 - 中英双语界面，按系统语言自动适配，可手动切换
 - 原生窗口（WKWebView / WebView2），下载完成后一键定位文件

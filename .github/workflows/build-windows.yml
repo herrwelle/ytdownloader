@@ -19,6 +19,9 @@ jobs:
         run: |
           pip install -r requirements.txt pyinstaller
 
+      - name: Test download requests
+        run: python -m unittest discover -s tests -v
+
       - name: Download deno runtime (Windows x64)
         shell: pwsh
         run: |
@@ -37,6 +40,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Test format selection UI
+        run: node tests/test_ui_state.js
 
       - name: Install bgutil server deps
         shell: pwsh
@@ -66,6 +72,7 @@ jobs:
           --collect-all yt_dlp
           --collect-all yt_dlp_plugins
           --collect-all yt_dlp_ejs
+          --collect-all curl_cffi
           --copy-metadata bgutil-ytdlp-pot-provider
           --hidden-import webview.platforms.edgechromium
           run.py
@@ -73,6 +80,8 @@ jobs:
       - name: Smoke test packaged runtime
         shell: pwsh
         run: |
+          $curl = Get-ChildItem dist\YTDownloader\_internal\curl_cffi -Filter "_wrapper*.pyd"
+          if (-not $curl) { throw "curl_cffi binary missing from portable build" }
           $ver = & dist\YTDownloader\_internal\deno\deno.exe run --allow-all dist\YTDownloader\_internal\bgutil\server\src\generate_once.ts --version
           Write-Host "generate_once version: $ver"
           if ("$ver" -notmatch '2\.0\.2') { exit 1 }
